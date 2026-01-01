@@ -1,2 +1,102 @@
-# giveawaybot
-Elis stuffs
+# Giveaway Bot
+
+A Discord bot dedicated to giveaways, game nights, and a "guess the number" game. This bot is designed to enhance community engagement with professional embed messages and modular command handling.
+
+## Features
+
+### Guess the Number Game
+- **&setnumber Command**: Admins can set a target number for players to guess
+- **Automatic Winner Detection**: Bot listens for correct guesses and announces winners
+- **Professional Embeds**: All messages use Discord embeds for a polished appearance
+- **Designated Channel**: Game runs in a specific channel to avoid spam
+
+### Bot Capabilities
+- Prefix-based commands (default: `&`)
+- Modular command handler for easy expansion
+- Permission checks for admin commands
+- Professional embed messages throughout
+
+## Quick Start
+
+1. **Install Dependencies**
+   ```bash
+   npm install
+   ```
+
+2. **Configure the Bot**
+   - Copy `.env.example` to `.env`
+   - Add your Discord bot token to `.env`
+   - Update the channel ID in `config.json`
+
+3. **Run the Bot**
+   ```bash
+   npm start
+   ```
+
+## Commands
+
+| Command | Description | Permission |
+|---------|-------------|------------|
+| `&setnumber <number>` | Sets the target number for the guess game | Administrator |
+
+## How to Play Guess the Number
+
+1. An administrator runs `&setnumber 42` (or any number)
+2. The bot announces in the game channel: "GUESS THE NUMBER ACTIVATED!"
+3. Players type their guesses as regular messages (e.g., "42")
+4. The first person to guess correctly wins!
+5. Winner should ping an owner to claim their prize
+
+## Configuration
+
+Edit `config.json` to customize:
+- `prefix`: Command prefix (default: `&`)
+- `guessChannelId`: Channel ID where the guess game runs
+
+## Deployment
+
+For detailed deployment instructions including hosting options (Heroku, Railway, VPS, etc.), see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Project Structure
+
+```
+giveawaybot/
+├── commands/           # Command modules
+│   └── setnumber.js   # Set number command
+├── config.json        # Bot configuration
+├── index.js           # Main bot file
+├── package.json       # Dependencies
+├── .env.example       # Environment variables template
+├── .gitignore         # Git ignore file
+└── DEPLOYMENT.md      # Detailed deployment guide
+```
+
+## Future Features
+
+This bot is designed to be modular and can be easily extended with:
+- Giveaway commands
+- Game night scheduling
+- Additional mini-games
+- Leaderboards
+- Prize management
+
+## Security
+
+- Bot token is stored in `.env` file (not committed to git)
+- Admin commands require Administrator permission
+- Input validation on all commands
+
+## Requirements
+
+- Node.js 16.9.0 or higher
+- Discord.js v14
+- A Discord bot token
+
+## License
+
+ISC
+
+## Support
+
+For issues, questions, or feature requests, please open an issue on GitHub.
+
