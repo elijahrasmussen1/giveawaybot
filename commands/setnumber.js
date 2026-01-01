@@ -1,5 +1,6 @@
 const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const config = require('../config.json');
+const state = require('../state.js');
 
 module.exports = {
     name: 'setnumber',
@@ -40,10 +41,8 @@ module.exports = {
             return message.reply({ embeds: [invalidEmbed] });
         }
 
-        // Set the target number (we need to store this globally)
-        // We'll use a require cache manipulation to update the value
-        const indexModule = require('../index.js');
-        indexModule.setTargetNumber(number);
+        // Set the target number using the state module
+        state.setTargetNumber(number);
 
         // Send confirmation to admin
         const confirmEmbed = new EmbedBuilder()
@@ -54,8 +53,9 @@ module.exports = {
         
         await message.reply({ embeds: [confirmEmbed] });
 
-        // Send activation message to the guess channel
-        const guessChannel = await client.channels.fetch(config.guessChannelId);
+        // Get the guess channel from cache or fetch it
+        const guessChannel = client.channels.cache.get(config.guessChannelId) || 
+                             await client.channels.fetch(config.guessChannelId).catch(() => null);
         
         if (guessChannel) {
             const activationEmbed = new EmbedBuilder()

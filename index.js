@@ -4,6 +4,7 @@ const path = require('path');
 require('dotenv').config();
 
 const config = require('./config.json');
+const state = require('./state.js');
 
 // Create a new Discord client
 const client = new Client({
@@ -35,13 +36,10 @@ if (fs.existsSync(commandsPath)) {
     }
 }
 
-// Store the target number for the guess game
-let targetNumber = null;
-
 // Bot ready event
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    console.log(`Bot is ready! Using prefix: ${config.prefix}`);
+    console.log('Bot is ready!');
 });
 
 // Message handler
@@ -72,13 +70,13 @@ client.on('messageCreate', async message => {
         }
     }
     // Check for number guesses in the designated channel
-    else if (message.channel.id === config.guessChannelId && targetNumber !== null) {
+    else if (message.channel.id === config.guessChannelId && state.getTargetNumber() !== null) {
         const guess = parseInt(message.content.trim());
         
         // Check if the message is a valid number
         if (!isNaN(guess)) {
             // Check if the guess matches the target number
-            if (guess === targetNumber) {
+            if (guess === state.getTargetNumber()) {
                 const winnerEmbed = new EmbedBuilder()
                     .setColor('#00FF00')
                     .setTitle('🎉 WINNER! 🎉')
@@ -88,14 +86,11 @@ client.on('messageCreate', async message => {
                 await message.channel.send({ embeds: [winnerEmbed] });
                 
                 // Reset the target number after someone wins
-                targetNumber = null;
+                state.clearTargetNumber();
             }
         }
     }
 });
-
-// Export for use in commands
-module.exports = { targetNumber, setTargetNumber: (num) => { targetNumber = num; } };
 
 // Login to Discord
 client.login(process.env.DISCORD_TOKEN);
