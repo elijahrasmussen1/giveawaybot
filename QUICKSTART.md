@@ -27,10 +27,8 @@ py -m pip install discord.py python-dotenv
 2. Click "New Application" (or select existing one)
 3. Go to "Bot" section in left sidebar
 4. Click "Reset Token" and copy the token that appears
-5. **IMPORTANT**: Enable these under "Privileged Gateway Intents":
-   - ✅ PRESENCE INTENT
-   - ✅ SERVER MEMBERS INTENT
-   - ✅ MESSAGE CONTENT INTENT
+5. **IMPORTANT**: Enable this under "Privileged Gateway Intents":
+   - ✅ **MESSAGE CONTENT INTENT** (required - bot cannot read messages without this!)
 
 ## Step 4: Configure Your Bot
 
@@ -141,7 +139,10 @@ python -m pip install discord.py python-dotenv
 
 ### "Privileged intent provided is not enabled"
 - Go to Discord Developer Portal → Your App → Bot
-- Enable all three Privileged Gateway Intents
+- Enable **MESSAGE CONTENT INTENT** under Privileged Gateway Intents
+- Click "Save Changes"
+- **Important**: After enabling, kick and re-invite your bot to the server
+- See FIX_INTENTS.md for detailed visual guide
 
 ### Bot doesn't respond to commands
 - Make sure bot has permissions in the channel

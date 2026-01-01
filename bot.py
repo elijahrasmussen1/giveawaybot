@@ -21,10 +21,9 @@ GUESS_CHANNEL_ID = int(config.get('guessChannelId'))
 # -----------------------------
 # BOT SETUP
 # -----------------------------
+# Configure intents - only request what we need
 intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-intents.members = True
+intents.message_content = True  # Required for reading message content and commands
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
