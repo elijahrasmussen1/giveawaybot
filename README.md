@@ -2,6 +2,12 @@
 
 A Discord bot dedicated to giveaways, game nights, and a "guess the number" game. This bot is designed to enhance community engagement with professional embed messages and modular command handling.
 
+**Available in two implementations:**
+- 🐍 **Python** (`bot.py`) - Simple, single-file implementation
+- 📦 **Node.js** (`index.js`) - Modular architecture with command handler
+
+Both implementations provide identical features. Choose based on your preference!
+
 ## Features
 
 ### Guess the Number Game
@@ -18,6 +24,27 @@ A Discord bot dedicated to giveaways, game nights, and a "guess the number" game
 
 ## Quick Start
 
+### Python Version (Recommended for Simplicity)
+
+1. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Configure the Bot**
+   - Copy `.env.example` to `.env`
+   - Add your Discord bot token to `.env` as `DISCORD_BOT_TOKEN`
+   - Update the channel ID in `config.json`
+
+3. **Run the Bot**
+   ```bash
+   python3 bot.py
+   ```
+
+See [README_PYTHON.md](README_PYTHON.md) for detailed Python setup.
+
+### Node.js Version (Modular Architecture)
+
 1. **Install Dependencies**
    ```bash
    npm install
@@ -25,13 +52,15 @@ A Discord bot dedicated to giveaways, game nights, and a "guess the number" game
 
 2. **Configure the Bot**
    - Copy `.env.example` to `.env`
-   - Add your Discord bot token to `.env`
+   - Add your Discord bot token to `.env` as `DISCORD_TOKEN`
    - Update the channel ID in `config.json`
 
 3. **Run the Bot**
    ```bash
    npm start
    ```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Node.js setup and hosting options.
 
 ## Commands
 
