@@ -7,9 +7,18 @@ Python implementation of the Discord Giveaway Bot with the same features as the 
 ### Installation
 
 1. **Install Python Dependencies**
+   
+   **Option A: Using requirements.txt (recommended)**
    ```bash
    pip install -r requirements.txt
    ```
+   
+   **Option B: Manual installation**
+   ```bash
+   pip install discord.py python-dotenv
+   ```
+   
+   **Having issues?** See [INSTALL_TROUBLESHOOTING.md](INSTALL_TROUBLESHOOTING.md) for solutions.
 
 2. **Configure the Bot**
    - Copy `.env.example` to `.env`
