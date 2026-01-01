@@ -8,6 +8,16 @@ A Discord bot dedicated to giveaways, game nights, and a "guess the number" game
 
 Both implementations provide identical features. Choose based on your preference!
 
+## 🚀 NEED HELP GETTING STARTED?
+
+**→ See [QUICKSTART.md](QUICKSTART.md) for step-by-step instructions to get your bot online NOW!**
+
+**→ Run the automated setup script:**
+- Windows: Double-click `setup.bat`
+- Linux/Mac: Run `./setup.sh`
+
+**→ Check your setup:** Run `python setup_check.py` to diagnose issues
+
 ## Features
 
 ### Guess the Number Game
