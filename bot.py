@@ -771,35 +771,19 @@ async def lock(ctx):
             add_reactions=True
         )
         
-        # First, set permissions for @everyone to deny
+        # Set permissions for @everyone to deny - this is the base lock
         await channel.set_permissions(
             everyone_role,
             overwrite=overwrites_deny,
             reason=f"Channel locked by {ctx.author}"
         )
         
-        # Then, explicitly set permissions for bypass role to allow (this overrides the @everyone deny)
+        # Set permissions for bypass role to allow (this overrides the @everyone deny)
         await channel.set_permissions(
             bypass_role,
             overwrite=overwrites_allow,
             reason=f"Bypass role exemption for locked channel by {ctx.author}"
         )
-        
-        # Also deny for all other roles except the bypass role to ensure lock works
-        # This is important because role-specific permissions can override @everyone
-        for role in ctx.guild.roles:
-            # Skip @everyone (already handled), bypass role (already handled), and managed roles (bots)
-            if role == everyone_role or role == bypass_role or role.managed or role.is_bot_managed():
-                continue
-            
-            # Only set deny if the role currently has overwrites in this channel
-            # or if it's a role with significant permissions
-            if channel.overwrites_for(role).send_messages is not False:
-                await channel.set_permissions(
-                    role,
-                    overwrite=overwrites_deny,
-                    reason=f"Channel locked by {ctx.author} - denying role {role.name}"
-                )
         
         # Send confirmation embed
         embed = discord.Embed(
@@ -869,7 +853,7 @@ async def unlock(ctx):
         # Get the bypass role
         bypass_role = ctx.guild.get_role(BYPASS_ROLE_ID)
         
-        # Remove all permission overwrites we added during lock
+        # Remove permission overwrites we added during lock
         # Setting overwrite to None removes the overwrite entirely
         
         # Restore @everyone permissions (remove override)
@@ -886,21 +870,6 @@ async def unlock(ctx):
                 overwrite=None,
                 reason=f"Channel unlocked, removing bypass role overrides by {ctx.author}"
             )
-        
-        # Also remove overwrites from all other roles that were set during lock
-        for role in ctx.guild.roles:
-            # Skip @everyone (already handled), bypass role (already handled), and managed roles
-            if role == everyone_role or role == bypass_role or role.managed or role.is_bot_managed():
-                continue
-            
-            # If this role has overwrites in this channel, remove them
-            overwrites = channel.overwrites_for(role)
-            if overwrites.send_messages is False:
-                await channel.set_permissions(
-                    role,
-                    overwrite=None,
-                    reason=f"Channel unlocked by {ctx.author} - removing lock overrides from {role.name}"
-                )
         
         # Send confirmation embed
         embed = discord.Embed(
