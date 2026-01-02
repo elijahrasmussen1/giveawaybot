@@ -27,8 +27,9 @@ py -m pip install discord.py python-dotenv
 2. Click "New Application" (or select existing one)
 3. Go to "Bot" section in left sidebar
 4. Click "Reset Token" and copy the token that appears
-5. **IMPORTANT**: Enable this under "Privileged Gateway Intents":
+5. **IMPORTANT**: Enable these under "Privileged Gateway Intents":
    - ✅ **MESSAGE CONTENT INTENT** (required - bot cannot read messages without this!)
+   - ✅ **SERVER MEMBERS INTENT** (required for -whois command)
 
 ## Step 4: Configure Your Bot
 

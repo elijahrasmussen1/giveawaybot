@@ -24,6 +24,7 @@ GUESS_CHANNEL_ID = int(config.get('guessChannelId'))
 # Configure intents - only request what we need
 intents = discord.Intents.default()
 intents.message_content = True  # Required for reading message content and commands
+intents.members = True  # Required for member information in whois command
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
@@ -167,6 +168,81 @@ async def setnumber_error(ctx, error):
     else:
         # Log unexpected errors
         print(f"Unexpected error in setnumber command: {error}")
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@bot.command(name='whois')
+async def whois(ctx, member: discord.Member = None):
+    """
+    Shows detailed information about a server member.
+    
+    Usage: -whois @username or -whois user_id
+    """
+    # If no member specified, show info about the command author
+    if member is None:
+        member = ctx.author
+    
+    # Create embed with member information
+    embed = discord.Embed(
+        title=f"{member.name}",
+        color=member.color if member.color != discord.Color.default() else discord.Color.blue()
+    )
+    
+    # Set the member's avatar as thumbnail
+    if member.avatar:
+        embed.set_thumbnail(url=member.avatar.url)
+    
+    # Add username field
+    embed.add_field(name="Username", value=member.name, inline=False)
+    
+    # Add mention field
+    embed.add_field(name="Mention", value=member.mention, inline=False)
+    
+    # Add joined server date
+    if member.joined_at:
+        joined_date = discord.utils.format_dt(member.joined_at, style='F')
+        embed.add_field(name="Joined", value=joined_date, inline=False)
+    
+    # Add account creation date
+    created_date = discord.utils.format_dt(member.created_at, style='F')
+    embed.add_field(name="Registered", value=created_date, inline=False)
+    
+    # Add roles (excluding @everyone)
+    roles = [role.mention for role in member.roles if role.name != "@everyone"]
+    if roles:
+        roles_text = f"[{len(roles)}] " + " ".join(roles)
+        # Limit roles display to avoid embed size limits
+        if len(roles_text) > 1024:
+            roles_text = f"[{len(roles)}] Too many roles to display"
+        embed.add_field(name="Roles", value=roles_text, inline=False)
+    else:
+        embed.add_field(name="Roles", value="[0] No roles", inline=False)
+    
+    # Set footer with member ID and timestamp
+    embed.set_footer(text=f"ID: {member.id}")
+    embed.timestamp = discord.utils.utcnow()
+    
+    await ctx.send(embed=embed)
+
+@whois.error
+async def whois_error(ctx, error):
+    """Error handler for whois command."""
+    if isinstance(error, commands.MemberNotFound):
+        embed = discord.Embed(
+            title="Member Not Found",
+            description="Could not find that member. Make sure you're using a valid @mention or user ID.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    else:
+        # Log unexpected errors
+        print(f"Unexpected error in whois command: {error}")
         embed = discord.Embed(
             title="Error",
             description="An unexpected error occurred. Please try again.",

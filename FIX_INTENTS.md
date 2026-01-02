@@ -15,28 +15,32 @@ This happens when your bot code requests privileged intents that aren't enabled 
 2. Select your application/bot
 3. Click "Bot" in the left sidebar
 4. Scroll down to "Privileged Gateway Intents"
-5. Enable these THREE intents:
-   - ✅ **PRESENCE INTENT**
-   - ✅ **SERVER MEMBERS INTENT** 
-   - ✅ **MESSAGE CONTENT INTENT**
+5. Enable these TWO intents:
+   - ✅ **SERVER MEMBERS INTENT** (required for -whois command)
+   - ✅ **MESSAGE CONTENT INTENT** (required for commands)
 6. Click "Save Changes"
 7. **IMPORTANT**: After enabling intents, you may need to kick and re-invite your bot to the server
 
-## Alternative - Modify bot.py to Use Only Required Intents
+## Alternative - Modify bot.py to Use Fewer Intents
 
-If you don't want to enable all intents, edit `bot.py` to use only what's needed:
+If you don't want to enable the MEMBERS intent (for privacy reasons), you can remove the `-whois` command functionality.
 
-### Option 1: Minimal Intents (Recommended for this bot)
+### Current Configuration (Both Commands)
 
-Change lines 24-27 in `bot.py` from:
+The bot currently uses:
 ```python
 intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-intents.members = True
+intents.message_content = True  # Required for commands
+intents.members = True  # Required for -whois command
 ```
 
-To:
+Requires in Developer Portal:
+- ✅ **MESSAGE CONTENT INTENT** (required for reading commands)
+- ✅ **SERVER MEMBERS INTENT** (required for -whois member lookup)
+
+### Option: Remove whois (Minimal Intents)
+
+If you only want the guess number game and don't need `-whois`, change lines in `bot.py` to:
 ```python
 intents = discord.Intents.default()
 intents.message_content = True
@@ -45,7 +49,9 @@ intents.message_content = True
 Then in Developer Portal, only enable:
 - ✅ **MESSAGE CONTENT INTENT** (required for reading message content)
 
-### Option 2: Use Intents.all() (Easiest but requires all intents enabled)
+And remove or comment out the `-whois` command in bot.py.
+
+### Option: Use Intents.all() (Easiest but requires all intents enabled)
 
 Change lines 24-27 in `bot.py` to:
 ```python

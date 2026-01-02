@@ -1,6 +1,6 @@
 # Giveaway Bot
 
-A Discord bot dedicated to giveaways, game nights, and a "guess the number" game. This bot is designed to enhance community engagement with professional embed messages and modular command handling.
+A Discord bot for community engagement and moderation featuring a "guess the number" game, member information lookups, and professional embed messaging.
 
 **Available in two implementations:**
 - 🐍 **Python** (`bot.py`) - Simple, single-file implementation
@@ -20,14 +20,17 @@ Both implementations provide identical features. Choose based on your preference
 
 ## Features
 
+### Moderation Commands
+- **-whois Command**: Display detailed member information including join date, roles, and account creation date
+
 ### Guess the Number Game
-- **&setnumber Command**: Admins can set a target number for players to guess
+- **-setnumber Command**: Admins can set a target number for players to guess
 - **Automatic Winner Detection**: Bot listens for correct guesses and announces winners
 - **Professional Embeds**: All messages use Discord embeds for a polished appearance
 - **Designated Channel**: Game runs in a specific channel to avoid spam
 
 ### Bot Capabilities
-- Prefix-based commands (default: `&`)
+- Prefix-based commands (default: `-`)
 - Modular command handler for easy expansion
 - Permission checks for admin commands
 - Professional embed messages throughout
