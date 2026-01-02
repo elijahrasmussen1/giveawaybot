@@ -22,10 +22,12 @@ Both implementations provide identical features. Choose based on your preference
 
 ### Moderation System
 - **-warn Command**: Warn members for rule violations (Admin only)
-- **Automatic Warning Tracking**: Persistent storage of all warnings
+- **Case Number System**: Each warning gets a unique case ID for tracking
+- **-viewcase Command**: View detailed information about specific warning cases (Admin only)
+- **Automatic Warning Tracking**: Persistent storage of all warnings with case numbers
 - **Auto-ban at 15 Warnings**: Automatic ban when a user reaches 15 warnings
-- **Modlog Channel**: All moderation actions logged to designated channel
-- **-warnings Command**: View a member's warning history (Admin only)
+- **Modlog Channel**: All moderation actions logged to designated channel with case IDs
+- **-warnings Command**: View a member's warning history with case numbers (Admin only)
 
 ### Member Information
 - **-whois Command**: Display detailed member information including join date, roles, and account creation date

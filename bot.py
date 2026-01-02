@@ -28,9 +28,16 @@ def load_warnings():
     """Load warnings from JSON file."""
     try:
         with open(WARNINGS_FILE, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+            # Ensure data has the correct structure
+            if not isinstance(data, dict):
+                return {"users": {}, "case_counter": 0}
+            if "users" not in data:
+                # Migrate old format to new format
+                return {"users": data, "case_counter": 0}
+            return data
     except FileNotFoundError:
-        return {}
+        return {"users": {}, "case_counter": 0}
 
 def save_warnings(warnings_data):
     """Save warnings to JSON file."""
@@ -38,6 +45,11 @@ def save_warnings(warnings_data):
         json.dump(warnings_data, f, indent=2)
 
 warnings = load_warnings()
+# Ensure warnings has the correct structure
+if "users" not in warnings:
+    warnings = {"users": warnings, "case_counter": 0}
+if "case_counter" not in warnings:
+    warnings["case_counter"] = 0
 
 # -----------------------------
 # BOT SETUP
@@ -320,23 +332,30 @@ async def warn(ctx, member: discord.Member = None, *, reason: str = "No reason p
     member_id = str(member.id)
     
     # Initialize member warnings if not exists
-    if member_id not in warnings:
-        warnings[member_id] = []
+    if member_id not in warnings["users"]:
+        warnings["users"][member_id] = []
+    
+    # Increment case counter
+    warnings["case_counter"] += 1
+    case_id = warnings["case_counter"]
     
     # Add warning
     warning_data = {
+        "case_id": case_id,
         "moderator": str(ctx.author.id),
         "moderator_name": str(ctx.author),
+        "member_id": member_id,
+        "member_name": str(member),
         "reason": reason,
         "timestamp": datetime.utcnow().isoformat()
     }
-    warnings[member_id].append(warning_data)
+    warnings["users"][member_id].append(warning_data)
     
     # Save warnings to file
     save_warnings(warnings)
     
     # Get warning count
-    warning_count = len(warnings[member_id])
+    warning_count = len(warnings["users"][member_id])
     
     # Send confirmation to moderator
     confirm_embed = discord.Embed(
@@ -344,7 +363,8 @@ async def warn(ctx, member: discord.Member = None, *, reason: str = "No reason p
         description=f"{member.mention} has been warned.\n**Reason:** {reason}",
         color=discord.Color.orange()
     )
-    confirm_embed.add_field(name="Total Warnings", value=f"{warning_count}/15", inline=False)
+    confirm_embed.add_field(name="Case ID", value=f"#{case_id}", inline=True)
+    confirm_embed.add_field(name="Total Warnings", value=f"{warning_count}/15", inline=True)
     confirm_embed.set_footer(text=f"Warned by {ctx.author}")
     confirm_embed.timestamp = discord.utils.utcnow()
     await ctx.reply(embed=confirm_embed)
@@ -360,12 +380,14 @@ async def warn(ctx, member: discord.Member = None, *, reason: str = "No reason p
                 title="🚨 Warning Issued",
                 color=discord.Color.orange()
             )
+            modlog_embed.add_field(name="Case ID", value=f"#{case_id}", inline=True)
+            modlog_embed.add_field(name="Warnings", value=f"{warning_count}/15", inline=True)
             modlog_embed.add_field(name="Member", value=f"{member.mention} ({member})", inline=False)
             modlog_embed.add_field(name="Member ID", value=member.id, inline=True)
-            modlog_embed.add_field(name="Warnings", value=f"{warning_count}/15", inline=True)
             modlog_embed.add_field(name="Moderator", value=f"{ctx.author.mention} ({ctx.author})", inline=False)
             modlog_embed.add_field(name="Reason", value=reason, inline=False)
             modlog_embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+            modlog_embed.set_footer(text=f"Case #{case_id}")
             modlog_embed.timestamp = discord.utils.utcnow()
             await modlog_channel.send(embed=modlog_embed)
     except Exception as e:
@@ -480,7 +502,7 @@ async def check_warnings(ctx, member: discord.Member = None):
         return
     
     member_id = str(member.id)
-    member_warnings = warnings.get(member_id, [])
+    member_warnings = warnings["users"].get(member_id, [])
     warning_count = len(member_warnings)
     
     # Create embed
@@ -497,6 +519,7 @@ async def check_warnings(ctx, member: discord.Member = None):
         recent_warnings = member_warnings[-5:] if len(member_warnings) > 5 else member_warnings
         
         for i, warn in enumerate(reversed(recent_warnings), 1):
+            case_id = warn.get('case_id', 'N/A')
             moderator_name = warn.get('moderator_name', 'Unknown')
             reason = warn.get('reason', 'No reason')
             timestamp = warn.get('timestamp', '')
@@ -509,13 +532,15 @@ async def check_warnings(ctx, member: discord.Member = None):
                 time_str = "Unknown time"
             
             embed.add_field(
-                name=f"Warning #{warning_count - i + 1}",
+                name=f"Case #{case_id}",
                 value=f"**Moderator:** {moderator_name}\n**Reason:** {reason}\n**Time:** {time_str}",
                 inline=False
             )
         
         if len(member_warnings) > 5:
-            embed.set_footer(text=f"Showing last 5 of {warning_count} warnings")
+            embed.set_footer(text=f"Showing last 5 of {warning_count} warnings • Use -viewcase <id> for details")
+        else:
+            embed.set_footer(text=f"Use -viewcase <id> for details")
     
     embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
     embed.timestamp = discord.utils.utcnow()
@@ -542,6 +567,137 @@ async def check_warnings_error(ctx, error):
         await ctx.reply(embed=embed)
     else:
         print(f"Unexpected error in warnings command: {error}")
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@bot.command(name='viewcase', aliases=['case'])
+@commands.has_permissions(administrator=True)
+async def view_case(ctx, case_id: int = None):
+    """
+    View details of a specific warning case by case ID.
+    
+    Usage: -viewcase <case_id>
+           -case <case_id>
+    """
+    global warnings
+    
+    # Check if case ID was provided
+    if case_id is None:
+        embed = discord.Embed(
+            title="Invalid Usage",
+            description=f"Usage: {PREFIX}viewcase <case_id>\n\nExample: {PREFIX}viewcase 42",
+            color=discord.Color.orange()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    # Search for the case across all users
+    found_case = None
+    case_member_id = None
+    
+    for member_id, member_warns in warnings["users"].items():
+        for warn in member_warns:
+            if warn.get('case_id') == case_id:
+                found_case = warn
+                case_member_id = member_id
+                break
+        if found_case:
+            break
+    
+    if not found_case:
+        embed = discord.Embed(
+            title="Case Not Found",
+            description=f"Could not find case #{case_id}.\n\nMake sure the case ID is correct.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    # Extract case details
+    member_id = found_case.get('member_id', case_member_id)
+    member_name = found_case.get('member_name', 'Unknown Member')
+    moderator_id = found_case.get('moderator', 'Unknown')
+    moderator_name = found_case.get('moderator_name', 'Unknown')
+    reason = found_case.get('reason', 'No reason provided')
+    timestamp = found_case.get('timestamp', '')
+    
+    # Format timestamp
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        time_str = dt.strftime("%A, %B %d, %Y at %I:%M %p UTC")
+    except:
+        time_str = "Unknown time"
+    
+    # Try to get the actual member object for thumbnail
+    try:
+        member = await ctx.guild.fetch_member(int(member_id))
+        avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
+        member_display = f"{member.mention} ({member})"
+    except:
+        avatar_url = None
+        member_display = f"{member_name} (ID: {member_id})"
+    
+    # Try to get moderator object
+    try:
+        moderator = await ctx.guild.fetch_member(int(moderator_id))
+        moderator_display = f"{moderator.mention} ({moderator})"
+    except:
+        moderator_display = f"{moderator_name} (ID: {moderator_id})"
+    
+    # Get member's warning count
+    member_warns = warnings["users"].get(member_id, [])
+    warning_count = len(member_warns)
+    
+    # Create detailed embed
+    embed = discord.Embed(
+        title=f"📋 Case #{case_id}",
+        description="**Warning Details**",
+        color=discord.Color.orange()
+    )
+    
+    embed.add_field(name="Member", value=member_display, inline=False)
+    embed.add_field(name="Member ID", value=member_id, inline=True)
+    embed.add_field(name="Total Warnings", value=f"{warning_count}/15", inline=True)
+    embed.add_field(name="Moderator", value=moderator_display, inline=False)
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Date & Time", value=time_str, inline=False)
+    
+    if avatar_url:
+        embed.set_thumbnail(url=avatar_url)
+    
+    embed.set_footer(text=f"Case #{case_id}")
+    embed.timestamp = discord.utils.utcnow()
+    
+    await ctx.send(embed=embed)
+
+@view_case.error
+async def view_case_error(ctx, error):
+    """Error handler for viewcase command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need Administrator permissions to use this command!",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    elif isinstance(error, commands.BadArgument):
+        embed = discord.Embed(
+            title="Invalid Case ID",
+            description=f"Please provide a valid case ID number.\n\nUsage: {PREFIX}viewcase <case_id>",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    else:
+        print(f"Unexpected error in viewcase command: {error}")
         embed = discord.Embed(
             title="Error",
             description="An unexpected error occurred. Please try again.",
