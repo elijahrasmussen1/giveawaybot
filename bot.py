@@ -19,6 +19,7 @@ with open('config.json', 'r') as f:
 PREFIX = config.get('prefix', '&')
 GUESS_CHANNEL_ID = int(config.get('guessChannelId'))
 MODLOG_CHANNEL_ID = int(config.get('modlogChannelId'))
+BYPASS_ROLE_ID = int(config.get('bypassRoleId'))
 
 # Warnings database file
 WARNINGS_FILE = 'warnings.json'
@@ -698,6 +699,188 @@ async def view_case_error(ctx, error):
         await ctx.reply(embed=embed)
     else:
         print(f"Unexpected error in viewcase command: {error}")
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@bot.command(name='lock')
+@commands.has_permissions(administrator=True)
+async def lock(ctx):
+    """
+    Locks the current channel to prevent raids.
+    Only members with the bypass role can send messages after locking.
+    
+    Usage: -lock
+    """
+    channel = ctx.channel
+    
+    # Get the bypass role
+    bypass_role = ctx.guild.get_role(BYPASS_ROLE_ID)
+    if bypass_role is None:
+        embed = discord.Embed(
+            title="Error",
+            description=f"Could not find bypass role with ID {BYPASS_ROLE_ID}. Please check config.json",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    try:
+        # Get the @everyone role
+        everyone_role = ctx.guild.default_role
+        
+        # Store the current permissions before locking
+        # This allows us to restore them on unlock
+        
+        # Deny send_messages for @everyone
+        await channel.set_permissions(
+            everyone_role,
+            send_messages=False,
+            add_reactions=False,
+            reason=f"Channel locked by {ctx.author}"
+        )
+        
+        # Allow send_messages for bypass role
+        await channel.set_permissions(
+            bypass_role,
+            send_messages=True,
+            add_reactions=True,
+            reason=f"Bypass role exemption for locked channel by {ctx.author}"
+        )
+        
+        # Send confirmation embed
+        embed = discord.Embed(
+            title="🔒 Channel Locked",
+            description=f"This channel has been locked. Only members with {bypass_role.mention} can send messages.",
+            color=discord.Color.red()
+        )
+        embed.set_footer(text=f"Locked by {ctx.author}")
+        embed.timestamp = discord.utils.utcnow()
+        
+        await ctx.send(embed=embed)
+        
+    except discord.Forbidden:
+        embed = discord.Embed(
+            title="Permission Error",
+            description="I don't have permission to manage channel permissions. Please ensure I have the 'Manage Channels' permission.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    except Exception as e:
+        print(f"Error locking channel: {e}")
+        embed = discord.Embed(
+            title="Error",
+            description=f"An error occurred while locking the channel: {str(e)}",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@lock.error
+async def lock_error(ctx, error):
+    """Error handler for lock command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need Administrator permissions to use this command!",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    else:
+        # Log unexpected errors
+        print(f"Unexpected error in lock command: {error}")
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@bot.command(name='unlock')
+@commands.has_permissions(administrator=True)
+async def unlock(ctx):
+    """
+    Unlocks the current channel and restores normal permissions.
+    
+    Usage: -unlock
+    """
+    channel = ctx.channel
+    
+    try:
+        # Get the @everyone role
+        everyone_role = ctx.guild.default_role
+        
+        # Get the bypass role
+        bypass_role = ctx.guild.get_role(BYPASS_ROLE_ID)
+        
+        # Restore send_messages for @everyone (set to None to inherit from category/server)
+        await channel.set_permissions(
+            everyone_role,
+            send_messages=None,
+            add_reactions=None,
+            reason=f"Channel unlocked by {ctx.author}"
+        )
+        
+        # Remove the bypass role's explicit permissions (so it inherits normally)
+        if bypass_role:
+            await channel.set_permissions(
+                bypass_role,
+                send_messages=None,
+                add_reactions=None,
+                reason=f"Channel unlocked, removing bypass role overrides by {ctx.author}"
+            )
+        
+        # Send confirmation embed
+        embed = discord.Embed(
+            title="🔓 Channel Unlocked",
+            description="This channel has been unlocked. Normal permissions have been restored.",
+            color=discord.Color.green()
+        )
+        embed.set_footer(text=f"Unlocked by {ctx.author}")
+        embed.timestamp = discord.utils.utcnow()
+        
+        await ctx.send(embed=embed)
+        
+    except discord.Forbidden:
+        embed = discord.Embed(
+            title="Permission Error",
+            description="I don't have permission to manage channel permissions. Please ensure I have the 'Manage Channels' permission.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    except Exception as e:
+        print(f"Error unlocking channel: {e}")
+        embed = discord.Embed(
+            title="Error",
+            description=f"An error occurred while unlocking the channel: {str(e)}",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@unlock.error
+async def unlock_error(ctx, error):
+    """Error handler for unlock command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need Administrator permissions to use this command!",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    else:
+        # Log unexpected errors
+        print(f"Unexpected error in unlock command: {error}")
         embed = discord.Embed(
             title="Error",
             description="An unexpected error occurred. Please try again.",
