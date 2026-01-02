@@ -7,6 +7,7 @@ import os
 import discord
 from discord.ext import commands
 import json
+from datetime import datetime
 
 # -----------------------------
 # CONFIGURATION
@@ -17,6 +18,26 @@ with open('config.json', 'r') as f:
 
 PREFIX = config.get('prefix', '&')
 GUESS_CHANNEL_ID = int(config.get('guessChannelId'))
+MODLOG_CHANNEL_ID = int(config.get('modlogChannelId'))
+
+# Warnings database file
+WARNINGS_FILE = 'warnings.json'
+
+# Load or initialize warnings data
+def load_warnings():
+    """Load warnings from JSON file."""
+    try:
+        with open(WARNINGS_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_warnings(warnings_data):
+    """Save warnings to JSON file."""
+    with open(WARNINGS_FILE, 'w') as f:
+        json.dump(warnings_data, f, indent=2)
+
+warnings = load_warnings()
 
 # -----------------------------
 # BOT SETUP
@@ -243,6 +264,284 @@ async def whois_error(ctx, error):
     else:
         # Log unexpected errors
         print(f"Unexpected error in whois command: {error}")
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@bot.command(name='warn')
+@commands.has_permissions(administrator=True)
+async def warn(ctx, member: discord.Member = None, *, reason: str = "No reason provided"):
+    """
+    Warns a member and logs it to the modlog channel.
+    
+    Usage: -warn @username reason
+           -warn user_id reason
+    """
+    global warnings
+    
+    # Check if a member was provided
+    if member is None:
+        embed = discord.Embed(
+            title="Invalid Usage",
+            description=f"Usage: {PREFIX}warn @member [reason]\n\nExample: {PREFIX}warn @user Spamming in chat",
+            color=discord.Color.orange()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    # Cannot warn bots
+    if member.bot:
+        embed = discord.Embed(
+            title="Cannot Warn Bot",
+            description="You cannot warn bot users.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    # Cannot warn yourself
+    if member.id == ctx.author.id:
+        embed = discord.Embed(
+            title="Cannot Warn Yourself",
+            description="You cannot warn yourself.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    # Get member ID as string for storage
+    member_id = str(member.id)
+    
+    # Initialize member warnings if not exists
+    if member_id not in warnings:
+        warnings[member_id] = []
+    
+    # Add warning
+    warning_data = {
+        "moderator": str(ctx.author.id),
+        "moderator_name": str(ctx.author),
+        "reason": reason,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    warnings[member_id].append(warning_data)
+    
+    # Save warnings to file
+    save_warnings(warnings)
+    
+    # Get warning count
+    warning_count = len(warnings[member_id])
+    
+    # Send confirmation to moderator
+    confirm_embed = discord.Embed(
+        title="⚠️ Member Warned",
+        description=f"{member.mention} has been warned.\n**Reason:** {reason}",
+        color=discord.Color.orange()
+    )
+    confirm_embed.add_field(name="Total Warnings", value=f"{warning_count}/15", inline=False)
+    confirm_embed.set_footer(text=f"Warned by {ctx.author}")
+    confirm_embed.timestamp = discord.utils.utcnow()
+    await ctx.reply(embed=confirm_embed)
+    
+    # Send modlog
+    try:
+        modlog_channel = bot.get_channel(MODLOG_CHANNEL_ID)
+        if modlog_channel is None:
+            modlog_channel = await bot.fetch_channel(MODLOG_CHANNEL_ID)
+        
+        if modlog_channel:
+            modlog_embed = discord.Embed(
+                title="🚨 Warning Issued",
+                color=discord.Color.orange()
+            )
+            modlog_embed.add_field(name="Member", value=f"{member.mention} ({member})", inline=False)
+            modlog_embed.add_field(name="Member ID", value=member.id, inline=True)
+            modlog_embed.add_field(name="Warnings", value=f"{warning_count}/15", inline=True)
+            modlog_embed.add_field(name="Moderator", value=f"{ctx.author.mention} ({ctx.author})", inline=False)
+            modlog_embed.add_field(name="Reason", value=reason, inline=False)
+            modlog_embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+            modlog_embed.timestamp = discord.utils.utcnow()
+            await modlog_channel.send(embed=modlog_embed)
+    except Exception as e:
+        print(f"Error sending to modlog channel: {e}")
+    
+    # Check if member should be banned (15 warnings)
+    if warning_count >= 15:
+        try:
+            # Send DM to user before banning
+            try:
+                dm_embed = discord.Embed(
+                    title="🔨 Banned from Server",
+                    description=f"You have been banned from **{ctx.guild.name}** for accumulating 15 warnings.",
+                    color=discord.Color.red()
+                )
+                dm_embed.add_field(name="Total Warnings", value="15/15", inline=False)
+                dm_embed.add_field(name="Latest Reason", value=reason, inline=False)
+                dm_embed.timestamp = discord.utils.utcnow()
+                await member.send(embed=dm_embed)
+            except:
+                pass  # Couldn't send DM, continue with ban
+            
+            # Ban the member
+            await member.ban(reason=f"Automatic ban: 15 warnings reached. Latest: {reason}")
+            
+            # Send ban notification to modlog
+            if modlog_channel:
+                ban_embed = discord.Embed(
+                    title="🔨 Automatic Ban",
+                    description=f"{member.mention} has been automatically banned for reaching 15 warnings.",
+                    color=discord.Color.red()
+                )
+                ban_embed.add_field(name="Member", value=f"{member} (ID: {member.id})", inline=False)
+                ban_embed.add_field(name="Final Reason", value=reason, inline=False)
+                ban_embed.timestamp = discord.utils.utcnow()
+                await modlog_channel.send(embed=ban_embed)
+            
+            # Notify in channel
+            ban_notify = discord.Embed(
+                title="🔨 Member Banned",
+                description=f"{member.mention} has been automatically banned for accumulating 15 warnings.",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=ban_notify)
+            
+        except discord.Forbidden:
+            error_embed = discord.Embed(
+                title="Ban Failed",
+                description=f"Failed to ban {member.mention}. I don't have permission to ban members.",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=error_embed)
+        except Exception as e:
+            print(f"Error banning member: {e}")
+            error_embed = discord.Embed(
+                title="Ban Failed",
+                description=f"An error occurred while trying to ban {member.mention}.",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=error_embed)
+
+@warn.error
+async def warn_error(ctx, error):
+    """Error handler for warn command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need Administrator permissions to use this command!",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    elif isinstance(error, commands.MemberNotFound):
+        embed = discord.Embed(
+            title="Member Not Found",
+            description="Could not find that member. Make sure you're using a valid @mention or user ID.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    else:
+        # Log unexpected errors
+        print(f"Unexpected error in warn command: {error}")
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@bot.command(name='warnings', aliases=['warns'])
+@commands.has_permissions(administrator=True)
+async def check_warnings(ctx, member: discord.Member = None):
+    """
+    Check warnings for a member.
+    
+    Usage: -warnings @username
+           -warnings user_id
+    """
+    global warnings
+    
+    # Check if a member was provided
+    if member is None:
+        embed = discord.Embed(
+            title="Invalid Usage",
+            description=f"Usage: {PREFIX}warnings @member\n\nExample: {PREFIX}warnings @user",
+            color=discord.Color.orange()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    member_id = str(member.id)
+    member_warnings = warnings.get(member_id, [])
+    warning_count = len(member_warnings)
+    
+    # Create embed
+    embed = discord.Embed(
+        title=f"📋 Warnings for {member.name}",
+        description=f"{member.mention} has **{warning_count}/15** warnings.",
+        color=discord.Color.orange() if warning_count > 0 else discord.Color.green()
+    )
+    
+    if warning_count == 0:
+        embed.add_field(name="Status", value="✅ No warnings", inline=False)
+    else:
+        # Show last 5 warnings
+        recent_warnings = member_warnings[-5:] if len(member_warnings) > 5 else member_warnings
+        
+        for i, warn in enumerate(reversed(recent_warnings), 1):
+            moderator_name = warn.get('moderator_name', 'Unknown')
+            reason = warn.get('reason', 'No reason')
+            timestamp = warn.get('timestamp', '')
+            
+            # Format timestamp
+            try:
+                dt = datetime.fromisoformat(timestamp)
+                time_str = dt.strftime("%Y-%m-%d %H:%M UTC")
+            except:
+                time_str = "Unknown time"
+            
+            embed.add_field(
+                name=f"Warning #{warning_count - i + 1}",
+                value=f"**Moderator:** {moderator_name}\n**Reason:** {reason}\n**Time:** {time_str}",
+                inline=False
+            )
+        
+        if len(member_warnings) > 5:
+            embed.set_footer(text=f"Showing last 5 of {warning_count} warnings")
+    
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+    embed.timestamp = discord.utils.utcnow()
+    await ctx.send(embed=embed)
+
+@check_warnings.error
+async def check_warnings_error(ctx, error):
+    """Error handler for warnings command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need Administrator permissions to use this command!",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    elif isinstance(error, commands.MemberNotFound):
+        embed = discord.Embed(
+            title="Member Not Found",
+            description="Could not find that member. Make sure you're using a valid @mention or user ID.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    else:
+        print(f"Unexpected error in warnings command: {error}")
         embed = discord.Embed(
             title="Error",
             description="An unexpected error occurred. Please try again.",
