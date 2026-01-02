@@ -22,12 +22,13 @@ Both implementations provide identical features. Choose based on your preference
 
 ### Moderation System
 - **-warn Command**: Warn members for rule violations (Admin only)
-- **-t Command (Timeout)**: Timeout members to prevent them from sending messages, reactions, or speaking (Admin only)
+- **-t Command (Timeout)**: Timeout members with flexible duration formats: `5m` (minutes), `5h` (hours), `5d` (days) - prevents them from sending messages, reactions, or speaking (Admin only)
+- **-ut Command (Untimeout)**: Remove timeout from members early (Admin only)
 - **Case Number System**: Each warning gets a unique case ID for tracking
 - **-viewcase Command**: View detailed information about specific warning cases (Admin only)
 - **Automatic Warning Tracking**: Persistent storage of all warnings with case numbers
 - **Auto-ban at 15 Warnings**: Automatic ban when a user reaches 15 warnings
-- **Modlog Channel**: All moderation actions logged to designated channel with case IDs
+- **Modlog Channel**: All moderation actions (warnings, timeouts, bans) logged to designated channel with case IDs
 - **-warnings Command**: View a member's warning history with case numbers (Admin only)
 - **-lock Command**: Lock channels to prevent raids - only bypass role can send messages (Admin only)
 - **-unlock Command**: Restore normal channel permissions (Admin only)

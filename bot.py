@@ -905,27 +905,54 @@ async def unlock_error(ctx, error):
 
 @bot.command(name='t', aliases=['timeout'])
 @commands.has_permissions(administrator=True)
-async def timeout_user(ctx, member: discord.Member = None, duration: int = 10, *, reason: str = "No reason provided"):
+async def timeout_user(ctx, member: discord.Member = None, duration_str: str = "10m", *, reason: str = "No reason provided"):
     """
     Timeout a member (prevents them from sending messages, reacting, speaking in voice).
     
-    Usage: -t @username [duration_in_minutes] [reason]
-           -t user_id [duration_in_minutes] [reason]
+    Usage: -t @username [duration] [reason]
+           -t user_id [duration] [reason]
     
+    Duration formats: 5m (minutes), 5h (hours), 5d (days)
     Default duration is 10 minutes if not specified.
-    Maximum duration is 28 days (40320 minutes).
+    Maximum duration is 28 days.
     """
     # Check if a member was provided
     if member is None:
         embed = discord.Embed(
             title="Invalid Usage",
-            description=f"Usage: {PREFIX}t @member [duration_minutes] [reason]\n\nExample: {PREFIX}t @user 10 Spamming",
+            description=f"Usage: {PREFIX}t @member [duration] [reason]\n\nExample: {PREFIX}t @user 5h Spamming",
             color=discord.Color.orange()
         )
         embed.add_field(
-            name="Duration",
-            value="Default: 10 minutes\nMaximum: 40320 minutes (28 days)",
+            name="Duration Formats",
+            value="• `5m` - 5 minutes\n• `5h` - 5 hours\n• `5d` - 5 days\n\nDefault: 10 minutes\nMaximum: 28 days",
             inline=False
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    # Parse duration string
+    duration_minutes = 10  # Default
+    try:
+        duration_str = duration_str.lower().strip()
+        if duration_str.endswith('m'):
+            # Minutes
+            duration_minutes = int(duration_str[:-1])
+        elif duration_str.endswith('h'):
+            # Hours
+            duration_minutes = int(duration_str[:-1]) * 60
+        elif duration_str.endswith('d'):
+            # Days
+            duration_minutes = int(duration_str[:-1]) * 1440
+        else:
+            # Try parsing as plain number (minutes)
+            duration_minutes = int(duration_str)
+    except (ValueError, AttributeError):
+        embed = discord.Embed(
+            title="Invalid Duration Format",
+            description=f"Invalid duration format: `{duration_str}`\n\nValid formats: `5m`, `5h`, `5d`, or just `5` for minutes.",
+            color=discord.Color.red()
         )
         embed.timestamp = discord.utils.utcnow()
         await ctx.reply(embed=embed)
@@ -976,15 +1003,34 @@ async def timeout_user(ctx, member: discord.Member = None, duration: int = 10, *
         return
     
     # Validate duration (max is 28 days = 40320 minutes)
-    if duration < 1:
-        duration = 1
-    if duration > 40320:
-        duration = 40320
+    if duration_minutes < 1:
+        duration_minutes = 1
+    if duration_minutes > 40320:
+        duration_minutes = 40320
+    
+    # Format duration display (human-readable)
+    def format_duration(minutes):
+        if minutes >= 1440:
+            days = minutes // 1440
+            remaining_hours = (minutes % 1440) // 60
+            if remaining_hours > 0:
+                return f"{days}d {remaining_hours}h"
+            return f"{days}d"
+        elif minutes >= 60:
+            hours = minutes // 60
+            remaining_mins = minutes % 60
+            if remaining_mins > 0:
+                return f"{hours}h {remaining_mins}m"
+            return f"{hours}h"
+        else:
+            return f"{minutes}m"
+    
+    duration_display = format_duration(duration_minutes)
     
     try:
         # Calculate timeout until time (duration in minutes)
         from datetime import timedelta
-        timeout_until = discord.utils.utcnow() + timedelta(minutes=duration)
+        timeout_until = discord.utils.utcnow() + timedelta(minutes=duration_minutes)
         
         # Apply timeout
         await member.timeout(timeout_until, reason=f"Timed out by {ctx.author}: {reason}")
@@ -996,7 +1042,7 @@ async def timeout_user(ctx, member: discord.Member = None, duration: int = 10, *
             color=discord.Color.orange()
         )
         embed.add_field(name="Member", value=f"{member} ({member.mention})", inline=False)
-        embed.add_field(name="Duration", value=f"{duration} minute(s)", inline=True)
+        embed.add_field(name="Duration", value=duration_display, inline=True)
         embed.add_field(name="Until", value=discord.utils.format_dt(timeout_until, style='F'), inline=True)
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
@@ -1012,7 +1058,7 @@ async def timeout_user(ctx, member: discord.Member = None, duration: int = 10, *
                 description=f"You have been timed out in **{ctx.guild.name}**.",
                 color=discord.Color.orange()
             )
-            dm_embed.add_field(name="Duration", value=f"{duration} minute(s)", inline=True)
+            dm_embed.add_field(name="Duration", value=duration_display, inline=True)
             dm_embed.add_field(name="Until", value=discord.utils.format_dt(timeout_until, style='F'), inline=True)
             dm_embed.add_field(name="Reason", value=reason, inline=False)
             dm_embed.add_field(
@@ -1037,7 +1083,7 @@ async def timeout_user(ctx, member: discord.Member = None, duration: int = 10, *
                 )
                 log_embed.add_field(name="Member", value=f"{member} ({member.id})", inline=False)
                 log_embed.add_field(name="Moderator", value=f"{ctx.author} ({ctx.author.id})", inline=False)
-                log_embed.add_field(name="Duration", value=f"{duration} minute(s)", inline=True)
+                log_embed.add_field(name="Duration", value=duration_display, inline=True)
                 log_embed.add_field(name="Until", value=discord.utils.format_dt(timeout_until, style='F'), inline=True)
                 log_embed.add_field(name="Reason", value=reason, inline=False)
                 log_embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
@@ -1086,6 +1132,140 @@ async def timeout_error(ctx, error):
     else:
         # Log unexpected errors
         print(f"Unexpected error in timeout command: {error}")
+        embed = discord.Embed(
+            title="Error",
+            description="An unexpected error occurred. Please try again.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@bot.command(name='ut', aliases=['untimeout', 'removetimeout'])
+@commands.has_permissions(administrator=True)
+async def untimeout_user(ctx, member: discord.Member = None, *, reason: str = "No reason provided"):
+    """
+    Remove timeout from a member early.
+    
+    Usage: -ut @username [reason]
+           -ut user_id [reason]
+    """
+    # Check if a member was provided
+    if member is None:
+        embed = discord.Embed(
+            title="Invalid Usage",
+            description=f"Usage: {PREFIX}ut @member [reason]\n\nExample: {PREFIX}ut @user Apologized",
+            color=discord.Color.orange()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    # Check if member is actually timed out
+    if member.timed_out_until is None or member.timed_out_until < discord.utils.utcnow():
+        embed = discord.Embed(
+            title="Not Timed Out",
+            description=f"{member.mention} is not currently timed out.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    try:
+        # Remove timeout (set timeout to None)
+        await member.timeout(None, reason=f"Timeout removed by {ctx.author}: {reason}")
+        
+        # Send confirmation embed
+        embed = discord.Embed(
+            title="✅ Timeout Removed",
+            description=f"Timeout has been removed from {member.mention}.",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Member", value=f"{member} ({member.mention})", inline=False)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+        embed.set_footer(text=f"Removed by {ctx.author}")
+        embed.timestamp = discord.utils.utcnow()
+        
+        await ctx.send(embed=embed)
+        
+        # Try to DM the member
+        try:
+            dm_embed = discord.Embed(
+                title="✅ Your Timeout Has Been Removed",
+                description=f"Your timeout in **{ctx.guild.name}** has been removed early.",
+                color=discord.Color.green()
+            )
+            dm_embed.add_field(name="Reason", value=reason, inline=False)
+            dm_embed.add_field(
+                name="You can now:",
+                value="• Send messages in text channels\n• Add reactions to messages\n• Speak in voice channels",
+                inline=False
+            )
+            dm_embed.timestamp = discord.utils.utcnow()
+            await member.send(embed=dm_embed)
+        except discord.Forbidden:
+            # Member has DMs disabled, that's okay
+            pass
+        
+        # Log to modlog channel
+        try:
+            modlog_channel = bot.get_channel(MODLOG_CHANNEL_ID)
+            if modlog_channel:
+                log_embed = discord.Embed(
+                    title="✅ Timeout Removed",
+                    description=f"Timeout removed from {member.mention}.",
+                    color=discord.Color.green()
+                )
+                log_embed.add_field(name="Member", value=f"{member} ({member.id})", inline=False)
+                log_embed.add_field(name="Moderator", value=f"{ctx.author} ({ctx.author.id})", inline=False)
+                log_embed.add_field(name="Reason", value=reason, inline=False)
+                log_embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+                log_embed.timestamp = discord.utils.utcnow()
+                await modlog_channel.send(embed=log_embed)
+        except Exception as e:
+            print(f"Error logging untimeout to modlog: {e}")
+        
+    except discord.Forbidden:
+        embed = discord.Embed(
+            title="Permission Error",
+            description="I don't have permission to remove timeout from this member. Please ensure I have the 'Moderate Members' permission and my role is higher than the target member's highest role.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    except Exception as e:
+        print(f"Error removing timeout: {e}")
+        embed = discord.Embed(
+            title="Error",
+            description=f"An error occurred while removing timeout: {str(e)}",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+
+@untimeout_user.error
+async def untimeout_error(ctx, error):
+    """Error handler for untimeout command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need Administrator permissions to use this command!",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    elif isinstance(error, commands.MemberNotFound):
+        embed = discord.Embed(
+            title="Member Not Found",
+            description="Could not find that member. Make sure you're using a valid @mention or user ID.",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+    else:
+        # Log unexpected errors
+        print(f"Unexpected error in untimeout command: {error}")
         embed = discord.Embed(
             title="Error",
             description="An unexpected error occurred. Please try again.",
