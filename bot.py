@@ -737,19 +737,29 @@ async def lock(ctx):
         # Store the current permissions before locking
         # This allows us to restore them on unlock
         
-        # Deny send_messages for @everyone
+        # Create permission overwrites
+        # Deny @everyone from sending messages (this overrides all role permissions)
+        overwrites_everyone = discord.PermissionOverwrite(
+            send_messages=False,
+            add_reactions=False
+        )
+        
+        # Explicitly allow bypass role (staff) to send messages
+        overwrites_bypass = discord.PermissionOverwrite(
+            send_messages=True,
+            add_reactions=True
+        )
+        
+        # Apply the permission overwrites
         await channel.set_permissions(
             everyone_role,
-            send_messages=False,
-            add_reactions=False,
+            overwrite=overwrites_everyone,
             reason=f"Channel locked by {ctx.author}"
         )
         
-        # Allow send_messages for bypass role
         await channel.set_permissions(
             bypass_role,
-            send_messages=True,
-            add_reactions=True,
+            overwrite=overwrites_bypass,
             reason=f"Bypass role exemption for locked channel by {ctx.author}"
         )
         
@@ -821,11 +831,16 @@ async def unlock(ctx):
         # Get the bypass role
         bypass_role = ctx.guild.get_role(BYPASS_ROLE_ID)
         
+        # Create permission overwrite that resets to default (None = inherit)
+        overwrites_reset = discord.PermissionOverwrite(
+            send_messages=None,
+            add_reactions=None
+        )
+        
         # Restore send_messages for @everyone (set to None to inherit from category/server)
         await channel.set_permissions(
             everyone_role,
-            send_messages=None,
-            add_reactions=None,
+            overwrite=overwrites_reset,
             reason=f"Channel unlocked by {ctx.author}"
         )
         
@@ -833,8 +848,7 @@ async def unlock(ctx):
         if bypass_role:
             await channel.set_permissions(
                 bypass_role,
-                send_messages=None,
-                add_reactions=None,
+                overwrite=overwrites_reset,
                 reason=f"Channel unlocked, removing bypass role overrides by {ctx.author}"
             )
         
