@@ -370,6 +370,31 @@ async def warn(ctx, member: discord.Member = None, *, reason: str = "No reason p
     confirm_embed.timestamp = discord.utils.utcnow()
     await ctx.reply(embed=confirm_embed)
     
+    # Send DM to the warned member
+    try:
+        dm_embed = discord.Embed(
+            title="⚠️ You Have Been Warned",
+            description=f"You have been warned in **{ctx.guild.name}**.",
+            color=discord.Color.orange()
+        )
+        dm_embed.add_field(name="Reason", value=reason, inline=False)
+        dm_embed.add_field(name="Total Warnings", value=f"{warning_count}/15", inline=True)
+        dm_embed.add_field(name="Case ID", value=f"#{case_id}", inline=True)
+        dm_embed.add_field(
+            name="⚠️ Important",
+            value=f"If you reach 15 warnings, you will be automatically banned from {ctx.guild.name}.",
+            inline=False
+        )
+        dm_embed.set_footer(text=f"Warned by {ctx.author}", icon_url=ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url)
+        dm_embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else None)
+        dm_embed.timestamp = discord.utils.utcnow()
+        await member.send(embed=dm_embed)
+    except discord.Forbidden:
+        # Member has DMs disabled, that's okay
+        pass
+    except Exception as e:
+        print(f"Error sending DM to warned member: {e}")
+    
     # Send modlog
     try:
         modlog_channel = bot.get_channel(MODLOG_CHANNEL_ID)
@@ -1059,18 +1084,22 @@ async def timeout_user(ctx, member: discord.Member = None, duration_str: str = "
                 color=discord.Color.orange()
             )
             dm_embed.add_field(name="Duration", value=duration_display, inline=True)
-            dm_embed.add_field(name="Until", value=discord.utils.format_dt(timeout_until, style='F'), inline=True)
+            dm_embed.add_field(name="Ends", value=discord.utils.format_dt(timeout_until, style='F'), inline=True)
             dm_embed.add_field(name="Reason", value=reason, inline=False)
             dm_embed.add_field(
                 name="What does this mean?",
                 value="You cannot send messages, add reactions, or speak in voice channels during the timeout period.",
                 inline=False
             )
+            dm_embed.set_footer(text=f"Timed out by {ctx.author}", icon_url=ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url)
+            dm_embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else None)
             dm_embed.timestamp = discord.utils.utcnow()
             await member.send(embed=dm_embed)
         except discord.Forbidden:
             # Member has DMs disabled, that's okay
             pass
+        except Exception as e:
+            print(f"Error sending timeout DM: {e}")
         
         # Log to modlog channel
         try:
@@ -1192,8 +1221,8 @@ async def untimeout_user(ctx, member: discord.Member = None, *, reason: str = "N
         # Try to DM the member
         try:
             dm_embed = discord.Embed(
-                title="✅ Your Timeout Has Been Removed",
-                description=f"Your timeout in **{ctx.guild.name}** has been removed early.",
+                title="✅ You Have Been Successfully Unmuted",
+                description=f"You have been successfully unmuted in **{ctx.guild.name}**.",
                 color=discord.Color.green()
             )
             dm_embed.add_field(name="Reason", value=reason, inline=False)
@@ -1202,11 +1231,15 @@ async def untimeout_user(ctx, member: discord.Member = None, *, reason: str = "N
                 value="• Send messages in text channels\n• Add reactions to messages\n• Speak in voice channels",
                 inline=False
             )
+            dm_embed.set_footer(text=f"Unmuted by {ctx.author}", icon_url=ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url)
+            dm_embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else None)
             dm_embed.timestamp = discord.utils.utcnow()
             await member.send(embed=dm_embed)
         except discord.Forbidden:
             # Member has DMs disabled, that's okay
             pass
+        except Exception as e:
+            print(f"Error sending untimeout DM: {e}")
         
         # Log to modlog channel
         try:
