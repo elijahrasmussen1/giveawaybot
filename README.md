@@ -22,6 +22,7 @@ Both implementations provide identical features. Choose based on your preference
 
 ### Moderation System
 - **-warn Command**: Warn members for rule violations (Admin only)
+- **-t Command (Timeout)**: Timeout members to prevent them from sending messages, reactions, or speaking (Admin only)
 - **Case Number System**: Each warning gets a unique case ID for tracking
 - **-viewcase Command**: View detailed information about specific warning cases (Admin only)
 - **Automatic Warning Tracking**: Persistent storage of all warnings with case numbers
