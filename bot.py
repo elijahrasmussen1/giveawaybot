@@ -7,7 +7,7 @@ import os
 import discord
 from discord.ext import commands
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # -----------------------------
 # CONFIGURATION
@@ -52,6 +52,25 @@ if "users" not in warnings:
 if "case_counter" not in warnings:
     warnings["case_counter"] = 0
 
+# Message tracking database file
+MESSAGES_FILE = 'messages.json'
+
+# Load or initialize message tracking data
+def load_messages():
+    """Load message tracking data from JSON file."""
+    try:
+        with open(MESSAGES_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_messages(messages_data):
+    """Save message tracking data to JSON file."""
+    with open(MESSAGES_FILE, 'w') as f:
+        json.dump(messages_data, f, indent=2)
+
+messages_data = load_messages()
+
 # -----------------------------
 # BOT SETUP
 # -----------------------------
@@ -81,6 +100,16 @@ async def on_message(message):
     # Ignore messages from bots
     if message.author.bot:
         return
+    
+    # Track message for statistics
+    user_id = str(message.author.id)
+    timestamp = datetime.utcnow().isoformat()
+    
+    if user_id not in messages_data:
+        messages_data[user_id] = []
+    
+    messages_data[user_id].append(timestamp)
+    save_messages(messages_data)
     
     # Process commands first
     await bot.process_commands(message)
@@ -1300,6 +1329,88 @@ async def untimeout_error(ctx, error):
         )
         embed.timestamp = discord.utils.utcnow()
         await ctx.reply(embed=embed)
+
+@bot.command(name='m', aliases=['messages'])
+async def message_stats(ctx, member: discord.Member = None):
+    """
+    Shows message count statistics for a user.
+    
+    Usage: -m @username
+    
+    Displays:
+    - Messages today
+    - Messages this week
+    - Messages this month
+    - All-time messages
+    """
+    # If no member specified, show stats for the command author
+    if member is None:
+        member = ctx.author
+    
+    user_id = str(member.id)
+    
+    # Get user's message timestamps
+    user_messages = messages_data.get(user_id, [])
+    
+    if not user_messages:
+        embed = discord.Embed(
+            title="📊 Message Statistics",
+            description=f"No messages tracked for {member.mention} yet.",
+            color=discord.Color.blue()
+        )
+        embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.send(embed=embed)
+        return
+    
+    # Calculate time periods
+    now = datetime.utcnow()
+    today_start = datetime(now.year, now.month, now.day)
+    week_start = now - timedelta(days=now.weekday())
+    week_start = datetime(week_start.year, week_start.month, week_start.day)
+    month_start = datetime(now.year, now.month, 1)
+    
+    # Count messages in each period
+    messages_today = 0
+    messages_week = 0
+    messages_month = 0
+    messages_all_time = len(user_messages)
+    
+    for timestamp_str in user_messages:
+        try:
+            msg_time = datetime.fromisoformat(timestamp_str)
+            
+            if msg_time >= today_start:
+                messages_today += 1
+            if msg_time >= week_start:
+                messages_week += 1
+            if msg_time >= month_start:
+                messages_month += 1
+        except (ValueError, AttributeError):
+            # Skip invalid timestamps
+            continue
+    
+    # Create embed
+    embed = discord.Embed(
+        title="📊 Message Statistics",
+        description=f"Activity stats for {member.mention}",
+        color=discord.Color.blue()
+    )
+    
+    # Add statistics fields
+    embed.add_field(name="📅 Today", value=f"**{messages_today:,}** messages", inline=True)
+    embed.add_field(name="📆 This Week", value=f"**{messages_week:,}** messages", inline=True)
+    embed.add_field(name="📊 This Month", value=f"**{messages_month:,}** messages", inline=True)
+    embed.add_field(name="🌟 All Time", value=f"**{messages_all_time:,}** messages", inline=True)
+    
+    # Set user's profile picture in the corner
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+    
+    # Add footer with context
+    embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url)
+    embed.timestamp = discord.utils.utcnow()
+    
+    await ctx.send(embed=embed)
 
 # -----------------------------
 # RUN BOT

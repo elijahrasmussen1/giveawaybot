@@ -6,6 +6,31 @@ require('dotenv').config();
 const config = require('./config.json');
 const state = require('./state.js');
 
+// Message tracking
+const MESSAGES_FILE = path.join(__dirname, 'messages.json');
+
+function loadMessages() {
+    try {
+        if (fs.existsSync(MESSAGES_FILE)) {
+            const data = fs.readFileSync(MESSAGES_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Error loading messages data:', error);
+    }
+    return {};
+}
+
+function saveMessages(data) {
+    try {
+        fs.writeFileSync(MESSAGES_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+        console.error('Error saving messages data:', error);
+    }
+}
+
+let messagesData = loadMessages();
+
 // Create a new Discord client
 const client = new Client({
     intents: [
@@ -47,12 +72,23 @@ client.on('messageCreate', async message => {
     // Ignore messages from bots
     if (message.author.bot) return;
 
+    // Track message for statistics
+    const userId = message.author.id;
+    const timestamp = new Date().toISOString();
+    
+    if (!messagesData[userId]) {
+        messagesData[userId] = [];
+    }
+    
+    messagesData[userId].push(timestamp);
+    saveMessages(messagesData);
+
     // Check if message is a command
     if (message.content.startsWith(config.prefix)) {
         const args = message.content.slice(config.prefix.length).trim().split(/ +/);
         const commandName = args.shift().toLowerCase();
 
-        const command = client.commands.get(commandName);
+        const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
 
         if (!command) return;
 
