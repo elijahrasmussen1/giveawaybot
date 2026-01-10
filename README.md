@@ -47,6 +47,23 @@ Both implementations provide identical features. Choose based on your preference
 - **Professional Embeds**: All messages use Discord embeds for a polished appearance
 - **Designated Channel**: Game runs in a specific channel to avoid spam
 
+### Giveaway System
+- **-gcreate Command**: Create giveaways with interactive setup (Admin only)
+  - Set duration (minutes, hours, or days)
+  - Specify number of winners
+  - Define prize
+  - Set invite requirements (integrates with Invite Tracker bot)
+  - Set message requirements (today, weekly, or monthly)
+- **Role-Based Entry System**:
+  - Member role: 1 entry
+  - Level 5 role: 2 entries
+  - Shop Owner role: 3 entries
+  - Server Booster role: 4 entries + bypasses all requirements
+- **Automatic Validation**: Users must meet invite and message requirements to enter
+- **-greroll Command**: Reroll giveaway to select new winners (Admin only)
+- **Automatic Winner Selection**: Picks winners based on weighted entries when giveaway ends
+- **Requirements Enforcement**: Users who don't meet criteria are automatically removed from entries with appropriate error messages
+
 ### Bot Capabilities
 - Prefix-based commands (default: `-`)
 - Modular command handler for easy expansion
@@ -107,6 +124,29 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Node.js setup and hosting option
 | `-ut @member [reason]` | Remove timeout from a member | Administrator |
 | `-lock [role]` | Lock channel to prevent raids | Administrator |
 | `-unlock` | Restore normal channel permissions | Administrator |
+| `-gcreate` | Create a new giveaway with interactive setup | Administrator |
+| `-greroll <giveaway_id>` | Reroll a giveaway to pick new winners | Administrator |
+
+## How to Create a Giveaway
+
+1. An administrator runs `-gcreate`
+2. Answer the interactive questions:
+   - **Duration**: Enter time like "10 minutes", "5 hours", or "2 days"
+   - **Number of Winners**: Enter how many winners (e.g., 1)
+   - **Prize**: Enter what the prize is (e.g., "Discord Nitro")
+   - **Invite Requirement**: Enter minimum invites needed (or 0 for none)
+   - **Message Requirement**: Enter minimum messages and period (e.g., "250 weekly" or "0" for none)
+3. The bot creates the giveaway and posts it with a 🎉 reaction
+4. Users react with 🎉 to enter
+5. Bot automatically validates requirements and entry eligibility
+6. When time expires, winners are automatically selected based on weighted entries
+7. Use `-greroll <giveaway_id>` to pick new winners if needed
+
+**Entry System:**
+- Member role: 1 entry
+- Level 5 role: 2 entries  
+- Shop Owner role: 3 entries
+- Server Booster role: 4 entries + bypasses all requirements
 
 ## How to Play Guess the Number
 
@@ -119,8 +159,19 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Node.js setup and hosting option
 ## Configuration
 
 Edit `config.json` to customize:
-- `prefix`: Command prefix (default: `&`)
+- `prefix`: Command prefix (default: `-`)
 - `guessChannelId`: Channel ID where the guess game runs
+- `modlogChannelId`: Channel ID for moderation logs
+- `bypassRoleId`: Role ID that can bypass channel locks
+- `giveawayChannelId`: Channel ID where giveaway notifications are sent
+- `inviteChannelId`: Channel ID for invite tracking
+- `guildId`: Your Discord server ID
+- `roles`: Role IDs for giveaway entry system
+  - `member`: Member role ID (1 entry)
+  - `level5`: Level 5 role ID (2 entries)
+  - `shopOwner`: Shop Owner role ID (3 entries)
+  - `serverBooster`: Server Booster role ID (4 entries + bypass)
+- `inviteTrackerBotId`: Invite Tracker bot ID for integration
 
 ## Deployment
 
