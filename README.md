@@ -35,6 +35,11 @@ Both implementations provide identical features. Choose based on your preference
 
 ### Member Information
 - **-whois Command**: Display detailed member information including join date, roles, and account creation date
+- **-m Command (Message Statistics)**: Track and display message counts for any user
+  - Shows messages sent today, this week, this month, and all-time
+  - Professional embed with user's profile picture
+  - Perfect for giveaway eligibility and activity tracking
+  - Automatically tracks all messages in real-time
 
 ### Guess the Number Game
 - **-setnumber Command**: Admins can set a target number for players to guess
@@ -92,7 +97,16 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Node.js setup and hosting option
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `&setnumber <number>` | Sets the target number for the guess game | Administrator |
+| `-setnumber <number>` | Sets the target number for the guess game | Administrator |
+| `-m @username` | Shows message count statistics (today, this week, this month, all time) | Everyone |
+| `-whois @member` | Display detailed member information | Everyone |
+| `-warn @member <reason>` | Warn a member for rule violations | Administrator |
+| `-warnings @member` | View a member's warning history | Administrator |
+| `-viewcase <case_id>` | View detailed information about a specific case | Administrator |
+| `-t @member <duration> <reason>` | Timeout a member (e.g., `5m`, `5h`, `5d`) | Administrator |
+| `-ut @member [reason]` | Remove timeout from a member | Administrator |
+| `-lock [role]` | Lock channel to prevent raids | Administrator |
+| `-unlock` | Restore normal channel permissions | Administrator |
 
 ## How to Play Guess the Number
 
