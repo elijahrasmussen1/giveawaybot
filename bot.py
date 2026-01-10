@@ -1354,7 +1354,7 @@ async def message_stats(ctx, member: discord.Member = None):
     
     if not user_messages:
         embed = discord.Embed(
-            title="📊 Message Statistics",
+            title="Message Statistics",
             description=f"No messages tracked for {member.mention} yet.",
             color=discord.Color.blue()
         )
@@ -1392,16 +1392,16 @@ async def message_stats(ctx, member: discord.Member = None):
     
     # Create embed
     embed = discord.Embed(
-        title="📊 Message Statistics",
+        title="Message Statistics",
         description=f"Activity stats for {member.mention}",
         color=discord.Color.blue()
     )
     
     # Add statistics fields
-    embed.add_field(name="📅 Today", value=f"**{messages_today:,}** messages", inline=True)
-    embed.add_field(name="📆 This Week", value=f"**{messages_week:,}** messages", inline=True)
-    embed.add_field(name="📊 This Month", value=f"**{messages_month:,}** messages", inline=True)
-    embed.add_field(name="🌟 All Time", value=f"**{messages_all_time:,}** messages", inline=True)
+    embed.add_field(name="Today", value=f"**{messages_today:,}** messages", inline=True)
+    embed.add_field(name="This Week", value=f"**{messages_week:,}** messages", inline=True)
+    embed.add_field(name="This Month", value=f"**{messages_month:,}** messages", inline=True)
+    embed.add_field(name="All Time", value=f"**{messages_all_time:,}** messages", inline=True)
     
     # Set user's profile picture in the corner
     embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)

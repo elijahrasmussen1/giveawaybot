@@ -44,7 +44,7 @@ module.exports = {
         if (userMessages.length === 0) {
             const noDataEmbed = new EmbedBuilder()
                 .setColor('#0099FF')
-                .setTitle('📊 Message Statistics')
+                .setTitle('Message Statistics')
                 .setDescription(`No messages tracked for ${member} yet.`)
                 .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                 .setTimestamp();
@@ -88,13 +88,13 @@ module.exports = {
         // Create embed
         const embed = new EmbedBuilder()
             .setColor('#0099FF')
-            .setTitle('📊 Message Statistics')
+            .setTitle('Message Statistics')
             .setDescription(`Activity stats for ${member}`)
             .addFields(
-                { name: '📅 Today', value: `**${messagesToday.toLocaleString()}** messages`, inline: true },
-                { name: '📆 This Week', value: `**${messagesWeek.toLocaleString()}** messages`, inline: true },
-                { name: '📊 This Month', value: `**${messagesMonth.toLocaleString()}** messages`, inline: true },
-                { name: '🌟 All Time', value: `**${messagesAllTime.toLocaleString()}** messages`, inline: true }
+                { name: 'Today', value: `**${messagesToday.toLocaleString()}** messages`, inline: true },
+                { name: 'This Week', value: `**${messagesWeek.toLocaleString()}** messages`, inline: true },
+                { name: 'This Month', value: `**${messagesMonth.toLocaleString()}** messages`, inline: true },
+                { name: 'All Time', value: `**${messagesAllTime.toLocaleString()}** messages`, inline: true }
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             .setFooter({ 

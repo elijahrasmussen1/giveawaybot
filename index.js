@@ -37,7 +37,10 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-    ]
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMembers,
+    ],
+    partials: ['MESSAGE', 'CHANNEL', 'REACTION']
 });
 
 // Initialize commands collection
@@ -125,6 +128,165 @@ client.on('messageCreate', async message => {
                 state.clearTargetNumber();
             }
         }
+    }
+});
+
+// Giveaway tracking
+const GIVEAWAYS_FILE = path.join(__dirname, 'giveaways.json');
+
+function loadGiveaways() {
+    try {
+        if (fs.existsSync(GIVEAWAYS_FILE)) {
+            const data = fs.readFileSync(GIVEAWAYS_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Error loading giveaways data:', error);
+    }
+    return {};
+}
+
+function saveGiveaways(data) {
+    try {
+        fs.writeFileSync(GIVEAWAYS_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+        console.error('Error saving giveaways data:', error);
+    }
+}
+
+// Import giveaway helper functions
+const { getEntryCount, checkMessageRequirement, getUserInvites } = require('./commands/gcreate');
+
+// Reaction add handler for giveaway entries
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return;
+    
+    // Fetch partial reaction if needed
+    if (reaction.partial) {
+        try {
+            await reaction.fetch();
+        } catch (error) {
+            console.error('Error fetching reaction:', error);
+            return;
+        }
+    }
+    
+    // Check if this is a giveaway message
+    const giveaways = loadGiveaways();
+    let giveawayId = null;
+    let giveaway = null;
+    
+    for (const [id, g] of Object.entries(giveaways)) {
+        if (g.messageId === reaction.message.id && !g.ended) {
+            giveawayId = id;
+            giveaway = g;
+            break;
+        }
+    }
+    
+    if (!giveaway || reaction.emoji.name !== '🎉') return;
+    
+    try {
+        const guild = await client.guilds.fetch(giveaway.guildId);
+        const member = await guild.members.fetch(user.id);
+        
+        const { entries, bypass } = getEntryCount(member);
+        
+        // Check if user has valid roles
+        if (entries === 0) {
+            await reaction.users.remove(user.id);
+            try {
+                await user.send('You do not have the required role to enter this giveaway!');
+            } catch (error) {
+                // User has DMs disabled
+            }
+            return;
+        }
+        
+        // Check requirements (unless bypassed by Server Booster)
+        if (!bypass) {
+            let inviteMet = true;
+            let messageMet = true;
+            let errorMessage = '';
+            
+            if (giveaway.inviteRequirement > 0) {
+                const invites = await getUserInvites(guild, user.id);
+                inviteMet = invites >= giveaway.inviteRequirement;
+            }
+            
+            if (giveaway.messageRequirement > 0) {
+                messageMet = checkMessageRequirement(user.id, giveaway.messageRequirement, giveaway.messagePeriod);
+            }
+            
+            // Determine error message
+            if (!inviteMet && !messageMet) {
+                errorMessage = `No requirements met! Please track your invites by using /invites in https://discord.com/channels/${config.guildId}/${config.inviteChannelId} and spam messages to meet requirement is a blacklist from giveaways!`;
+            } else if (!inviteMet) {
+                errorMessage = `Join failed! You must complete the invite requirement. Use /invites in https://discord.com/channels/${config.guildId}/${config.inviteChannelId} to see your invites.`;
+            } else if (!messageMet) {
+                errorMessage = 'Join failed! You must complete the message requirement. Spamming messages is a blacklist from the giveaway!';
+            }
+            
+            if (errorMessage) {
+                await reaction.users.remove(user.id);
+                try {
+                    await user.send(errorMessage);
+                } catch (error) {
+                    // User has DMs disabled
+                }
+                return;
+            }
+        }
+        
+        // User successfully entered - track their entry
+        if (!giveaway.participants) {
+            giveaway.participants = {};
+        }
+        giveaway.participants[user.id] = {
+            entries: entries,
+            bypass: bypass,
+            timestamp: Date.now()
+        };
+        saveGiveaways(giveaways);
+        
+    } catch (error) {
+        console.error('Error processing giveaway entry:', error);
+    }
+});
+
+// Reaction remove handler
+client.on('messageReactionRemove', async (reaction, user) => {
+    if (user.bot) return;
+    
+    // Fetch partial reaction if needed
+    if (reaction.partial) {
+        try {
+            await reaction.fetch();
+        } catch (error) {
+            console.error('Error fetching reaction:', error);
+            return;
+        }
+    }
+    
+    // Check if this is a giveaway message
+    const giveaways = loadGiveaways();
+    let giveawayId = null;
+    let giveaway = null;
+    
+    for (const [id, g] of Object.entries(giveaways)) {
+        if (g.messageId === reaction.message.id && !g.ended) {
+            giveawayId = id;
+            giveaway = g;
+            break;
+        }
+    }
+    
+    if (!giveaway || reaction.emoji.name !== '🎉') return;
+    
+    // Remove user from participants
+    if (giveaway.participants && giveaway.participants[user.id]) {
+        delete giveaway.participants[user.id];
+        saveGiveaways(giveaways);
     }
 });
 
