@@ -138,6 +138,9 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 # Store the target number for the guess game
 target_number = None
 
+# Store invite snapshots for tracking who invited whom
+invite_cache = {}
+
 # -----------------------------
 # EVENTS
 # -----------------------------
@@ -147,6 +150,111 @@ async def on_ready():
     print(f'Logged in as {bot.user.name} ({bot.user.id})')
     print('Bot is ready!')
     print('------')
+    
+    # Cache all invites for all guilds at startup
+    for guild in bot.guilds:
+        try:
+            invites = await guild.invites()
+            invite_cache[guild.id] = {invite.code: invite.uses for invite in invites}
+            print(f'Cached {len(invites)} invites for guild: {guild.name}')
+        except Exception as e:
+            print(f'Could not cache invites for guild {guild.name}: {e}')
+
+@bot.event
+async def on_member_join(member):
+    """Event handler for when a member joins the server."""
+    guild = member.guild
+    
+    # Get the invite channel
+    try:
+        invite_channel = bot.get_channel(INVITE_CHANNEL_ID)
+        if invite_channel is None:
+            invite_channel = await bot.fetch_channel(INVITE_CHANNEL_ID)
+    except Exception as e:
+        print(f"Error fetching invite channel: {e}")
+        invite_channel = None
+    
+    # Find which invite was used
+    inviter = None
+    try:
+        # Fetch current invites
+        current_invites = await guild.invites()
+        
+        # Compare with cached invites to find which one increased
+        if guild.id in invite_cache:
+            for invite in current_invites:
+                cached_uses = invite_cache[guild.id].get(invite.code, 0)
+                if invite.uses > cached_uses:
+                    # This invite was used
+                    inviter = invite.inviter
+                    
+                    # Update inviter's invite count in database
+                    if inviter:
+                        inviter_id_str = str(inviter.id)
+                        if inviter_id_str not in invites_data:
+                            invites_data[inviter_id_str] = {
+                                'regular': 0,
+                                'fake': 0,
+                                'left': 0,
+                                'added': 0
+                            }
+                        
+                        # Increment regular invites
+                        invites_data[inviter_id_str]['regular'] += 1
+                        save_invites(invites_data)
+                    
+                    break
+        
+        # Update the invite cache
+        invite_cache[guild.id] = {invite.code: invite.uses for invite in current_invites}
+        
+    except Exception as e:
+        print(f"Error tracking invite for {member.name}: {e}")
+    
+    # Send welcome message to invite channel
+    if invite_channel and inviter:
+        try:
+            # Get inviter's current invite count
+            inviter_id_str = str(inviter.id)
+            inviter_stats = invites_data.get(inviter_id_str, {'regular': 0, 'fake': 0, 'left': 0, 'added': 0})
+            total_invites = inviter_stats['regular'] + inviter_stats['added'] - inviter_stats['fake'] - inviter_stats['left']
+            total_invites = max(0, total_invites)
+            
+            # Send message without pinging the inviter
+            welcome_message = f"{member.mention} has been invited by {inviter.name} and now has {total_invites} invites"
+            await invite_channel.send(welcome_message)
+        except Exception as e:
+            print(f"Error sending welcome message: {e}")
+    elif invite_channel:
+        # Could not determine inviter
+        try:
+            welcome_message = f"{member.mention} has joined the server"
+            await invite_channel.send(welcome_message)
+        except Exception as e:
+            print(f"Error sending welcome message: {e}")
+
+@bot.event
+async def on_invite_create(invite):
+    """Event handler for when an invite is created."""
+    try:
+        guild = invite.guild
+        if guild.id not in invite_cache:
+            invite_cache[guild.id] = {}
+        invite_cache[guild.id][invite.code] = invite.uses
+        print(f"Cached new invite: {invite.code}")
+    except Exception as e:
+        print(f"Error caching new invite: {e}")
+
+@bot.event
+async def on_invite_delete(invite):
+    """Event handler for when an invite is deleted."""
+    try:
+        guild = invite.guild
+        if guild.id in invite_cache and invite.code in invite_cache[guild.id]:
+            del invite_cache[guild.id][invite.code]
+            print(f"Removed deleted invite from cache: {invite.code}")
+    except Exception as e:
+        print(f"Error removing deleted invite from cache: {e}")
 
 @bot.event
 async def on_message(message):
