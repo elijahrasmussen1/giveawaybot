@@ -7,7 +7,7 @@ import os
 import discord
 from discord.ext import commands
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import asyncio
 import re
 
@@ -2117,9 +2117,9 @@ class GiveawayView(discord.ui.View):
                         
                         # Determine error message
                         if not invite_met and not message_met:
-                            error_message = f"No requirements met! Please track your invites by using /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} and spam messages to meet requirement is a blacklist from giveaways!"
+                            error_message = f"No requirements met! Use -i command to check your invites and spam messages to meet requirement is a blacklist from giveaways!"
                         elif not invite_met:
-                            error_message = f"Join failed! You must complete the invite requirement. Use /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} to see your invites."
+                            error_message = f"Join failed! You must complete the invite requirement. Use -i command to check your invites."
                         else:
                             error_message = 'Join failed! You must complete the message requirement. Spamming messages is a blacklist from the giveaway!'
                         
@@ -2153,9 +2153,9 @@ class GiveawayView(discord.ui.View):
                 
                 # Determine error message
                 if not invite_met and not message_met:
-                    error_message = f"No requirements met! Please track your invites by using /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} and spam messages to meet requirement is a blacklist from giveaways!"
+                    error_message = f"No requirements met! Use -i command to check your invites and spam messages to meet requirement is a blacklist from giveaways!"
                 elif not invite_met:
-                    error_message = f"Join failed! You must complete the invite requirement. Use /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} to see your invites."
+                    error_message = f"Join failed! You must complete the invite requirement. Use -i command to check your invites."
                 elif not message_met:
                     error_message = 'Join failed! You must complete the message requirement. Spamming messages is a blacklist from the giveaway!'
                 
@@ -2208,7 +2208,7 @@ async def create_giveaway(ctx):
             return
         
         giveaway_data['duration'] = duration_seconds
-        giveaway_data['endsAt'] = (datetime.utcnow() + timedelta(seconds=duration_seconds)).timestamp()
+        giveaway_data['endsAt'] = (datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)).timestamp()
         
         # Question 2: Number of Winners
         q2 = await ctx.send('**Giveaway Setup - Question 2/6**\nEnter the number of winners:')
