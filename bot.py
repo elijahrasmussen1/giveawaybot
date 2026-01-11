@@ -1861,19 +1861,19 @@ async def get_user_invites(guild, user_id):
         }
     
     try:
-        # Fetch all guild invites to get regular invites
+        # Fetch all guild invites to get regular invites from Discord
         guild_invites = await guild.invites()
         
-        # Count invites created by this user
-        regular_count = 0
+        # Count invites created by this user from Discord API
+        discord_invite_count = 0
         for invite in guild_invites:
             if invite.inviter and invite.inviter.id == user_id:
                 # Add the number of times this invite code has been used
-                regular_count += invite.uses
+                discord_invite_count += invite.uses
         
-        # Update regular invite count
-        invites_data[user_id_str]['regular'] = regular_count
-        save_invites(invites_data)
+        # Use stored regular count - DO NOT auto-update to preserve resets
+        # If stored value is 0, it means either reset or new user - keep it at 0
+        regular_count = invites_data[user_id_str].get('regular', 0)
         
     except discord.Forbidden:
         # Bot doesn't have permission to view invites
@@ -1883,7 +1883,7 @@ async def get_user_invites(guild, user_id):
         print(f"Error fetching invites for user {user_id}: {e}")
         regular_count = invites_data[user_id_str].get('regular', 0)
     
-    # Get all invite stats
+    # Get all invite stats from stored data
     stats = invites_data[user_id_str]
     fake = stats.get('fake', 0)
     left = stats.get('left', 0)
