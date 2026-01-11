@@ -1524,6 +1524,73 @@ async def get_user_invites(guild, user_id):
     # For now, return 0 as placeholder
     return 0
 
+def calculate_total_entries(participants):
+    """Calculate total entries from all participants."""
+    total = 0
+    for participant_data in participants.values():
+        total += participant_data.get('entries', 1)
+    return total
+
+async def update_giveaway_embed(giveaway_id):
+    """Update giveaway embed with current entry count."""
+    giveaway = giveaways_data.get(giveaway_id)
+    if not giveaway or giveaway.get('ended', False):
+        return
+    
+    try:
+        guild = bot.get_guild(giveaway['guildId'])
+        if not guild:
+            return
+        
+        channel = guild.get_channel(giveaway['channelId'])
+        if not channel:
+            return
+        
+        message = await channel.fetch_message(giveaway['messageId'])
+        if not message:
+            return
+        
+        # Calculate total entries
+        total_entries = calculate_total_entries(giveaway.get('participants', {}))
+        
+        # Recreate the embed with updated entry count
+        giveaway_embed = discord.Embed(
+            title=f"GIVEAWAY: {giveaway['prize']}",
+            description='Click the button below to enter!',
+            color=discord.Color.green()
+        )
+        giveaway_embed.add_field(name='Prize', value=giveaway['prize'], inline=False)
+        giveaway_embed.add_field(name='Winners', value=str(giveaway['winners']), inline=True)
+        giveaway_embed.add_field(name='Ends', value=f"<t:{int(giveaway['endsAt'])}:R>", inline=True)
+        giveaway_embed.add_field(name='Entries', value=f"**{total_entries}**", inline=True)
+        
+        # Add image if provided
+        if giveaway.get('imageUrl'):
+            giveaway_embed.set_image(url=giveaway['imageUrl'])
+        
+        # Add requirements to embed
+        requirements_text = ''
+        if giveaway['inviteRequirement'] > 0:
+            requirements_text += f"Invites: {giveaway['inviteRequirement']}\n"
+        if giveaway['messageRequirement'] > 0:
+            requirements_text += f"Messages: {giveaway['messageRequirement']} ({giveaway['messagePeriod']})\n"
+        if requirements_text:
+            giveaway_embed.add_field(name='Giveaway Requirements', value=requirements_text, inline=False)
+        
+        giveaway_embed.add_field(
+            name='Entry Bonuses',
+            value=f'<@&{MEMBER_ROLE_ID}>: 1 entry\n<@&{LEVEL5_ROLE_ID}>: 2 entries\n<@&{SHOP_OWNER_ROLE_ID}>: 3 entries\n<@&{SERVER_BOOSTER_ROLE_ID}>: 4 entries (bypass requirements)',
+            inline=False
+        )
+        giveaway_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
+        giveaway_embed.timestamp = discord.utils.utcnow()
+        
+        # Update the message
+        await message.edit(embed=giveaway_embed)
+        
+    except Exception as e:
+        print(f"Error updating giveaway embed: {e}")
+
 async def end_giveaway(giveaway_id):
     """End a giveaway and select winners."""
     giveaway = giveaways_data.get(giveaway_id)
@@ -1691,6 +1758,10 @@ class GiveawayView(discord.ui.View):
                     # Remove them if they no longer have the role
                     del giveaway['participants'][str(member.id)]
                     save_giveaways(giveaways_data)
+                    
+                    # Update the giveaway embed with new entry count
+                    await update_giveaway_embed(self.giveaway_id)
+                    
                     await interaction.response.send_message('You no longer have the required role for this giveaway!', ephemeral=True)
                     return
                 
@@ -1710,6 +1781,9 @@ class GiveawayView(discord.ui.View):
                         # Remove them if they no longer meet requirements
                         del giveaway['participants'][str(member.id)]
                         save_giveaways(giveaways_data)
+                        
+                        # Update the giveaway embed with new entry count
+                        await update_giveaway_embed(self.giveaway_id)
                         
                         # Determine error message
                         if not invite_met and not message_met:
@@ -1766,6 +1840,9 @@ class GiveawayView(discord.ui.View):
                 'timestamp': datetime.utcnow().timestamp()
             }
             save_giveaways(giveaways_data)
+            
+            # Update the giveaway embed with new entry count
+            await update_giveaway_embed(self.giveaway_id)
             
             await interaction.response.send_message(f'Successfully entered the giveaway with {entries} {"entry" if entries == 1 else "entries"}!', ephemeral=True)
             
@@ -1893,6 +1970,7 @@ async def create_giveaway(ctx):
         giveaway_embed.add_field(name='Prize', value=giveaway_data['prize'], inline=False)
         giveaway_embed.add_field(name='Winners', value=str(giveaway_data['winners']), inline=True)
         giveaway_embed.add_field(name='Ends', value=f"<t:{int(giveaway_data['endsAt'])}:R>", inline=True)
+        giveaway_embed.add_field(name='Entries', value='**0**', inline=True)
         
         # Add image if provided
         if giveaway_data.get('imageUrl'):
