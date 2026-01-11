@@ -171,113 +171,6 @@ async def on_message(message):
             # Not a valid number, ignore
             pass
 
-@bot.event
-async def on_raw_reaction_add(payload):
-    """Event handler for when a reaction is added."""
-    if payload.user_id == bot.user.id:
-        return
-    
-    # Check if this is a giveaway message
-    giveaway_id = None
-    giveaway = None
-    
-    for gid, g in giveaways_data.items():
-        if g.get('messageId') == payload.message_id and not g.get('ended', False):
-            giveaway_id = gid
-            giveaway = g
-            break
-    
-    if not giveaway or str(payload.emoji) != '🎉':
-        return
-    
-    try:
-        guild = bot.get_guild(payload.guild_id)
-        member = guild.get_member(payload.user_id)
-        
-        if not member:
-            return
-        
-        entries, bypass = get_entry_count(member)
-        
-        # Check if user has valid roles
-        if entries == 0:
-            channel = guild.get_channel(payload.channel_id)
-            message = await channel.fetch_message(payload.message_id)
-            await message.remove_reaction(payload.emoji, member)
-            try:
-                await member.send('You do not have the required role to enter this giveaway!')
-            except:
-                pass
-            return
-        
-        # Check requirements (unless bypassed by Server Booster)
-        if not bypass:
-            invite_met = True
-            message_met = True
-            error_message = ''
-            
-            if giveaway.get('inviteRequirement', 0) > 0:
-                invites = await get_user_invites(guild, payload.user_id)
-                invite_met = invites >= giveaway['inviteRequirement']
-            
-            if giveaway.get('messageRequirement', 0) > 0:
-                message_met = check_message_requirement(payload.user_id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
-            
-            # Determine error message
-            if not invite_met and not message_met:
-                error_message = f"No requirements met! Please track your invites by using /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} and spam messages to meet requirement is a blacklist from giveaways!"
-            elif not invite_met:
-                error_message = f"Join failed! You must complete the invite requirement. Use /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} to see your invites."
-            elif not message_met:
-                error_message = 'Join failed! You must complete the message requirement. Spamming messages is a blacklist from the giveaway!'
-            
-            if error_message:
-                channel = guild.get_channel(payload.channel_id)
-                message = await channel.fetch_message(payload.message_id)
-                await message.remove_reaction(payload.emoji, member)
-                try:
-                    await member.send(error_message)
-                except:
-                    pass
-                return
-        
-        # User successfully entered - track their entry
-        if 'participants' not in giveaway:
-            giveaway['participants'] = {}
-        giveaway['participants'][str(payload.user_id)] = {
-            'entries': entries,
-            'bypass': bypass,
-            'timestamp': datetime.utcnow().timestamp()
-        }
-        save_giveaways(giveaways_data)
-        
-    except Exception as e:
-        print(f"Error processing giveaway entry: {e}")
-
-@bot.event
-async def on_raw_reaction_remove(payload):
-    """Event handler for when a reaction is removed."""
-    if payload.user_id == bot.user.id:
-        return
-    
-    # Check if this is a giveaway message
-    giveaway_id = None
-    giveaway = None
-    
-    for gid, g in giveaways_data.items():
-        if g.get('messageId') == payload.message_id and not g.get('ended', False):
-            giveaway_id = gid
-            giveaway = g
-            break
-    
-    if not giveaway or str(payload.emoji) != '🎉':
-        return
-    
-    # Remove user from participants
-    if 'participants' in giveaway and str(payload.user_id) in giveaway['participants']:
-        del giveaway['participants'][str(payload.user_id)]
-        save_giveaways(giveaways_data)
-
 # -----------------------------
 # COMMANDS
 # -----------------------------
@@ -1649,57 +1542,29 @@ async def end_giveaway(giveaway_id):
         if not message:
             return
         
-        # Get reaction users
-        reaction = None
-        for r in message.reactions:
-            if str(r.emoji) == '🎉':
-                reaction = r
-                break
+        # Get participants from stored data
+        participants = giveaway.get('participants', {})
         
-        if not reaction:
+        if not participants:
             await channel.send('No one entered the giveaway!')
             giveaway['ended'] = True
             save_giveaways(giveaways_data)
             return
         
-        users = [user async for user in reaction.users() if not user.bot]
         valid_entries = []
         
-        # Process each user
-        for user in users:
+        # Process each participant
+        for user_id_str, participant_data in participants.items():
             try:
-                member = guild.get_member(user.id)
-                if not member:
-                    continue
+                user_id = int(user_id_str)
+                entries = participant_data.get('entries', 1)
                 
-                entries, bypass = get_entry_count(member)
-                
-                if entries == 0:
-                    continue
-                
-                # Check requirements (unless bypassed)
-                meets_requirements = bypass
-                
-                if not bypass:
-                    invite_met = True
-                    message_met = True
-                    
-                    if giveaway.get('inviteRequirement', 0) > 0:
-                        invites = await get_user_invites(guild, user.id)
-                        invite_met = invites >= giveaway['inviteRequirement']
-                    
-                    if giveaway.get('messageRequirement', 0) > 0:
-                        message_met = check_message_requirement(user.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
-                    
-                    meets_requirements = invite_met and message_met
-                
-                if meets_requirements:
-                    # Add entries for this user
-                    for _ in range(entries):
-                        valid_entries.append(user.id)
+                # Add entries for this user
+                for _ in range(entries):
+                    valid_entries.append(user_id)
             
             except Exception as e:
-                print(f"Error processing user {user.id}: {e}")
+                print(f"Error processing user {user_id_str}: {e}")
         
         if not valid_entries:
             await channel.send('No valid entries for the giveaway!')
@@ -1751,6 +1616,79 @@ async def end_giveaway(giveaway_id):
     except Exception as e:
         print(f"Error ending giveaway: {e}")
 
+# Giveaway Button View
+class GiveawayView(discord.ui.View):
+    def __init__(self, giveaway_id):
+        super().__init__(timeout=None)  # No timeout for persistent buttons
+        self.giveaway_id = giveaway_id
+    
+    @discord.ui.button(label="Enter Giveaway", style=discord.ButtonStyle.primary, emoji="🎉", custom_id="giveaway_enter")
+    async def enter_giveaway(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle giveaway entry button click."""
+        giveaway = giveaways_data.get(self.giveaway_id)
+        
+        if not giveaway or giveaway.get('ended', False):
+            await interaction.response.send_message('This giveaway has ended!', ephemeral=True)
+            return
+        
+        try:
+            member = interaction.user
+            guild = interaction.guild
+            
+            entries, bypass = get_entry_count(member)
+            
+            # Check if user has valid roles
+            if entries == 0:
+                await interaction.response.send_message('You do not have the required role to enter this giveaway!', ephemeral=True)
+                return
+            
+            # Check requirements (unless bypassed by Server Booster)
+            if not bypass:
+                invite_met = True
+                message_met = True
+                error_message = ''
+                
+                if giveaway.get('inviteRequirement', 0) > 0:
+                    invites = await get_user_invites(guild, member.id)
+                    invite_met = invites >= giveaway['inviteRequirement']
+                
+                if giveaway.get('messageRequirement', 0) > 0:
+                    message_met = check_message_requirement(member.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
+                
+                # Determine error message
+                if not invite_met and not message_met:
+                    error_message = f"No requirements met! Please track your invites by using /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} and spam messages to meet requirement is a blacklist from giveaways!"
+                elif not invite_met:
+                    error_message = f"Join failed! You must complete the invite requirement. Use /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} to see your invites."
+                elif not message_met:
+                    error_message = 'Join failed! You must complete the message requirement. Spamming messages is a blacklist from the giveaway!'
+                
+                if error_message:
+                    await interaction.response.send_message(error_message, ephemeral=True)
+                    return
+            
+            # User successfully entered - track their entry
+            if 'participants' not in giveaway:
+                giveaway['participants'] = {}
+            
+            # Check if already entered
+            if str(member.id) in giveaway['participants']:
+                await interaction.response.send_message(f'You have already entered this giveaway with {entries} {"entry" if entries == 1 else "entries"}!', ephemeral=True)
+                return
+            
+            giveaway['participants'][str(member.id)] = {
+                'entries': entries,
+                'bypass': bypass,
+                'timestamp': datetime.utcnow().timestamp()
+            }
+            save_giveaways(giveaways_data)
+            
+            await interaction.response.send_message(f'Successfully entered the giveaway with {entries} {"entry" if entries == 1 else "entries"}!', ephemeral=True)
+            
+        except Exception as e:
+            print(f"Error processing giveaway entry: {e}")
+            await interaction.response.send_message('An error occurred while processing your entry.', ephemeral=True)
+
 @bot.command(name='gcreate')
 @commands.has_permissions(administrator=True)
 async def create_giveaway(ctx):
@@ -1766,7 +1704,7 @@ async def create_giveaway(ctx):
     
     try:
         # Question 1: Duration
-        await ctx.send('**Giveaway Setup - Question 1/5**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):')
+        await ctx.send('**Giveaway Setup - Question 1/6**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):')
         duration_msg = await bot.wait_for('message', check=check, timeout=60.0)
         duration_seconds = parse_duration(duration_msg.content)
         
@@ -1778,7 +1716,7 @@ async def create_giveaway(ctx):
         giveaway_data['endsAt'] = (datetime.utcnow() + timedelta(seconds=duration_seconds)).timestamp()
         
         # Question 2: Number of Winners
-        await ctx.send('**Giveaway Setup - Question 2/5**\nEnter the number of winners:')
+        await ctx.send('**Giveaway Setup - Question 2/6**\nEnter the number of winners:')
         winners_msg = await bot.wait_for('message', check=check, timeout=60.0)
         
         try:
@@ -1792,12 +1730,12 @@ async def create_giveaway(ctx):
         giveaway_data['winners'] = winners
         
         # Question 3: Prize
-        await ctx.send('**Giveaway Setup - Question 3/5**\nEnter the prize:')
+        await ctx.send('**Giveaway Setup - Question 3/6**\nEnter the prize:')
         prize_msg = await bot.wait_for('message', check=check, timeout=60.0)
         giveaway_data['prize'] = prize_msg.content
         
         # Question 4: Invite Requirement
-        await ctx.send('**Giveaway Setup - Question 4/5 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):')
+        await ctx.send('**Giveaway Setup - Question 4/6 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):')
         invite_msg = await bot.wait_for('message', check=check, timeout=60.0)
         
         try:
@@ -1811,7 +1749,7 @@ async def create_giveaway(ctx):
         giveaway_data['inviteRequirement'] = invite_req
         
         # Question 5: Message Requirement
-        await ctx.send('**Giveaway Setup - Question 5/5 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:')
+        await ctx.send('**Giveaway Setup - Question 5/6 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:')
         message_req_msg = await bot.wait_for('message', check=check, timeout=60.0)
         message_req_content = message_req_msg.content.strip()
         
@@ -1826,18 +1764,38 @@ async def create_giveaway(ctx):
             giveaway_data['messageRequirement'] = int(msg_match.group(1))
             giveaway_data['messagePeriod'] = msg_match.group(2).lower()
         
+        # Question 6: Optional Picture
+        await ctx.send('**Giveaway Setup - Question 6/6 (Optional Picture)**\nSend an image URL or type "no" to skip:')
+        picture_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        picture_content = picture_msg.content.strip().lower()
+        
+        if picture_content != 'no':
+            # Check if message has attachments or contains a URL
+            if picture_msg.attachments:
+                giveaway_data['imageUrl'] = picture_msg.attachments[0].url
+            elif picture_content.startswith('http://') or picture_content.startswith('https://'):
+                giveaway_data['imageUrl'] = picture_content
+            else:
+                giveaway_data['imageUrl'] = None
+        else:
+            giveaway_data['imageUrl'] = None
+        
         # Generate giveaway ID
         giveaway_id = f"giveaway_{int(datetime.utcnow().timestamp() * 1000)}"
         
         # Create giveaway embed
         giveaway_embed = discord.Embed(
             title=f"GIVEAWAY: {giveaway_data['prize']}",
-            description='React with 🎉 to enter!',
+            description='Click the button below to enter!',
             color=discord.Color.green()
         )
         giveaway_embed.add_field(name='Prize', value=giveaway_data['prize'], inline=False)
         giveaway_embed.add_field(name='Winners', value=str(giveaway_data['winners']), inline=True)
         giveaway_embed.add_field(name='Ends', value=f"<t:{int(giveaway_data['endsAt'])}:R>", inline=True)
+        
+        # Add image if provided
+        if giveaway_data.get('imageUrl'):
+            giveaway_embed.set_image(url=giveaway_data['imageUrl'])
         
         # Add requirements to embed
         requirements_text = ''
@@ -1850,15 +1808,17 @@ async def create_giveaway(ctx):
         
         giveaway_embed.add_field(
             name='Entry Bonuses',
-            value='Member: 1 entry\nLevel 5: 2 entries\nShop Owner: 3 entries\nServer Booster: 4 entries (bypass requirements)',
+            value=f'<@&{MEMBER_ROLE_ID}>: 1 entry\n<@&{LEVEL5_ROLE_ID}>: 2 entries\n<@&{SHOP_OWNER_ROLE_ID}>: 3 entries\n<@&{SERVER_BOOSTER_ROLE_ID}>: 4 entries (bypass requirements)',
             inline=False
         )
         giveaway_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
         giveaway_embed.timestamp = discord.utils.utcnow()
         
-        # Send giveaway message
-        giveaway_msg = await ctx.send(embed=giveaway_embed)
-        await giveaway_msg.add_reaction('🎉')
+        # Create button view
+        view = GiveawayView(giveaway_id)
+        
+        # Send giveaway message with button
+        giveaway_msg = await ctx.send(embed=giveaway_embed, view=view)
         
         # Save giveaway data
         giveaways_data[giveaway_id] = {
@@ -1952,56 +1912,28 @@ async def reroll_giveaway(ctx, giveaway_id: str = None):
         channel = guild.get_channel(giveaway['channelId'])
         message = await channel.fetch_message(giveaway['messageId'])
         
-        # Get reaction users
-        reaction = None
-        for r in message.reactions:
-            if str(r.emoji) == '🎉':
-                reaction = r
-                break
+        # Get participants from stored data
+        participants = giveaway.get('participants', {})
+        previous_winners = set(giveaway.get('winners', []))
         
-        if not reaction:
+        if not participants:
             await ctx.reply('No one entered the giveaway!')
             return
         
-        users = [user async for user in reaction.users() if not user.bot]
-        previous_winners = set(giveaway.get('winners', []))
         valid_entries = []
         
-        # Process each user (excluding previous winners)
-        for user in users:
-            if user.id in previous_winners:
+        # Process each participant (excluding previous winners)
+        for user_id_str, participant_data in participants.items():
+            user_id = int(user_id_str)
+            if user_id in previous_winners:
                 continue
             
             try:
-                member = guild.get_member(user.id)
-                if not member:
-                    continue
+                entries = participant_data.get('entries', 1)
                 
-                entries, bypass = get_entry_count(member)
-                
-                if entries == 0:
-                    continue
-                
-                # Check requirements (unless bypassed)
-                meets_requirements = bypass
-                
-                if not bypass:
-                    invite_met = True
-                    message_met = True
-                    
-                    if giveaway.get('inviteRequirement', 0) > 0:
-                        invites = await get_user_invites(guild, user.id)
-                        invite_met = invites >= giveaway['inviteRequirement']
-                    
-                    if giveaway.get('messageRequirement', 0) > 0:
-                        message_met = check_message_requirement(user.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
-                    
-                    meets_requirements = invite_met and message_met
-                
-                if meets_requirements:
-                    # Add entries for this user
-                    for _ in range(entries):
-                        valid_entries.append(user.id)
+                # Add entries for this user
+                for _ in range(entries):
+                    valid_entries.append(user_id)
             
             except Exception as e:
                 print(f"Error processing user {user.id}: {e}")
