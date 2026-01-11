@@ -173,6 +173,30 @@ Edit `config.json` to customize:
   - `serverBooster`: Server Booster role ID (4 entries + bypass)
 - `inviteTrackerBotId`: Invite Tracker bot ID for integration
 
+## Required Bot Permissions
+
+For the bot to function properly, it needs the following Discord permissions:
+
+**Essential Permissions:**
+- `Read Messages/View Channels` - View channels and their content
+- `Send Messages` - Send responses and embeds
+- `Embed Links` - Send embed messages
+- `Manage Messages` - Delete messages for cleanup and moderation
+- `Read Message History` - Read past messages
+- `Add Reactions` - Add reactions to messages
+- `Manage Roles` - For moderation features (timeout, role checks)
+- `Manage Channels` - For lock/unlock commands
+- `Ban Members` - For auto-ban at 15 warnings
+- `Moderate Members` - For timeout command
+- `Manage Guild` - **Required for invite tracking** - allows bot to view server invites
+
+**Required Intents** (configure in Discord Developer Portal):
+- `Server Members Intent` - Required for member information
+- `Message Content Intent` - Required for reading commands
+- `Invites Intent` - **Required for giveaway invite tracking**
+
+**Note on Invite Tracking:** The bot tracks invites by fetching Discord's native invite data, compatible with Invite Tracker bot (ID: 720351927581278219). The bot needs `Manage Guild` permission to view invite usage counts.
+
 ## Deployment
 
 For detailed deployment instructions including hosting options (Heroku, Railway, VPS, etc.), see [DEPLOYMENT.md](DEPLOYMENT.md).

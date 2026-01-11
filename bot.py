@@ -112,6 +112,7 @@ intents = discord.Intents.default()
 intents.message_content = True  # Required for reading message content and commands
 intents.members = True  # Required for member information in whois command
 intents.reactions = True  # Required for giveaway reactions
+intents.invites = True  # Required for tracking user invites
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
@@ -1519,10 +1520,30 @@ def check_message_requirement(user_id, requirement, period):
     return message_count >= requirement
 
 async def get_user_invites(guild, user_id):
-    """Get user's invite count - placeholder for Invite Tracker integration."""
-    # In production, this would query the Invite Tracker bot
-    # For now, return 0 as placeholder
-    return 0
+    """
+    Get user's invite count by fetching guild invites.
+    This tracks invites created by the user that have been used.
+    Works similarly to Invite Tracker bot (ID: 720351927581278219).
+    """
+    try:
+        # Fetch all guild invites
+        invites = await guild.invites()
+        
+        # Count invites created by this user
+        user_invite_count = 0
+        for invite in invites:
+            if invite.inviter and invite.inviter.id == user_id:
+                # Add the number of times this invite code has been used
+                user_invite_count += invite.uses
+        
+        return user_invite_count
+    except discord.Forbidden:
+        # Bot doesn't have permission to view invites
+        print(f"Missing permissions to view invites in guild {guild.id}")
+        return 0
+    except Exception as e:
+        print(f"Error fetching invites for user {user_id}: {e}")
+        return 0
 
 def calculate_total_entries(participants):
     """Calculate total entries from all participants."""
