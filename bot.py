@@ -1609,13 +1609,19 @@ async def reset_invites(ctx, target=None):
     
     # Check if resetting all
     if target == 'all':
-        # Clear all invite data
-        invites_data.clear()
+        # Reset all user invite data to 0 instead of clearing
+        for user_id in list(invites_data.keys()):
+            invites_data[user_id] = {
+                'regular': 0,
+                'fake': 0,
+                'left': 0,
+                'added': 0
+            }
         save_invites(invites_data)
         
         embed = discord.Embed(
             title="All Invites Reset",
-            description="All server invite data has been reset.",
+            description="All server invite data has been completely reset to 0.",
             color=discord.Color.green()
         )
         embed.timestamp = discord.utils.utcnow()
@@ -1636,14 +1642,18 @@ async def reset_invites(ctx, target=None):
     
     user_id_str = str(member.id)
     
-    # Reset user's invite data
-    if user_id_str in invites_data:
-        del invites_data[user_id_str]
-        save_invites(invites_data)
+    # Reset user's invite data - set all to 0 instead of deleting
+    invites_data[user_id_str] = {
+        'regular': 0,
+        'fake': 0,
+        'left': 0,
+        'added': 0
+    }
+    save_invites(invites_data)
     
     embed = discord.Embed(
         title="Invites Reset",
-        description=f"Invite data for {member.mention} has been reset.",
+        description=f"Invite data for {member.mention} has been completely reset to 0.",
         color=discord.Color.green()
     )
     embed.timestamp = discord.utils.utcnow()
@@ -1673,18 +1683,54 @@ async def invite_leaderboard(ctx):
         await ctx.send("This command can only be used in a server.")
         return
     
-    # Collect invite data for all users
+    # Fetch guild invites ONCE to avoid rate limiting
+    try:
+        guild_invites = await guild.invites()
+    except discord.Forbidden:
+        embed = discord.Embed(
+            title="Permission Error",
+            description="Bot needs 'Manage Guild' permission to track invites.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Calculate invites for all users in a single pass
+    user_invites = {}
+    
+    # Count regular invites from Discord's invite system
+    for invite in guild_invites:
+        if invite.inviter:
+            inviter_id = str(invite.inviter.id)
+            if inviter_id not in user_invites:
+                user_invites[inviter_id] = 0
+            user_invites[inviter_id] += invite.uses
+    
+    # Collect leaderboard data
     leaderboard_data = []
     
     for member in guild.members:
         if member.bot:
             continue
         
-        invite_stats = await get_user_invites(guild, member.id)
-        if invite_stats['total'] > 0:
+        user_id_str = str(member.id)
+        
+        # Get regular invites from our calculated data
+        regular = user_invites.get(user_id_str, 0)
+        
+        # Get additional data from persistent storage
+        user_data = invites_data.get(user_id_str, {'regular': 0, 'fake': 0, 'left': 0, 'added': 0})
+        fake = user_data.get('fake', 0)
+        left = user_data.get('left', 0)
+        added = user_data.get('added', 0)
+        
+        # Calculate total
+        total = max(0, regular + added - fake - left)
+        
+        if total > 0:
             leaderboard_data.append({
                 'member': member,
-                'total': invite_stats['total']
+                'total': total
             })
     
     # Sort by total invites descending
