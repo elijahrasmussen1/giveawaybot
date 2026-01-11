@@ -41,6 +41,23 @@ Both implementations provide identical features. Choose based on your preference
   - Perfect for giveaway eligibility and activity tracking
   - Automatically tracks all messages in real-time
 
+### Invite Tracking System
+- **-i Command (Check Invites)**: Display user's invite statistics
+  - Shows total invites with breakdown: regular, fake, left, and added
+  - Professional embed with user's profile picture
+  - Works seamlessly with giveaway requirements
+  - Tracks invites created by users using Discord's native API
+- **-addinvites Command**: Add bonus invites to users (Admin only)
+  - Bonus invites count toward giveaway requirements
+  - Example: `-addinvites @user 50`
+- **-resetinvites Command**: Reset invite data (Admin only)
+  - Reset specific user: `-resetinvites @user`
+  - Reset all users: `-resetinvites all`
+- **-invlb Command (Invite Leaderboard)**: Display top members by invite count
+  - Shows top 10 members ranked by total invites
+  - Professional embed with clean formatting
+  - Updates in real-time
+
 ### Guess the Number Game
 - **-setnumber Command**: Admins can set a target number for players to guess
 - **Automatic Winner Detection**: Bot listens for correct guesses and announces winners
@@ -52,16 +69,25 @@ Both implementations provide identical features. Choose based on your preference
   - Set duration (minutes, hours, or days)
   - Specify number of winners
   - Define prize
-  - Set invite requirements (integrates with Invite Tracker bot)
+  - Set invite requirements (uses native Discord invite tracking)
   - Set message requirements (today, weekly, or monthly)
+  - Optional giveaway image
+- **Interactive Button Entry**: Modern button-based entry system (Python version)
+  - Click "🎉 Enter Giveaway" button to participate
+  - Automatic requirement verification on click
+  - Real-time entry counter updates
+  - Ephemeral feedback messages
 - **Role-Based Entry System**:
   - Member role: 1 entry
   - Level 5 role: 2 entries
   - Shop Owner role: 3 entries
   - Server Booster role: 4 entries + bypasses all requirements
+- **Invite Integration**: Uses same invite tracking as `-i` command for accurate requirement verification
 - **Automatic Validation**: Users must meet invite and message requirements to enter
+- **Dynamic Re-verification**: Requirements checked on each button click, allowing users to enter after meeting requirements
 - **-greroll Command**: Reroll giveaway to select new winners (Admin only)
 - **Automatic Winner Selection**: Picks winners based on weighted entries when giveaway ends
+- **Automated Winner Tickets**: Creates private ticket channels for winners with congratulations message
 - **Requirements Enforcement**: Users who don't meet criteria are automatically removed from entries with appropriate error messages
 
 ### Bot Capabilities

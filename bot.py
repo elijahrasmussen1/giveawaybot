@@ -92,6 +92,25 @@ def save_giveaways(giveaways_data):
 
 giveaways_data = load_giveaways()
 
+# Invite tracking database file
+INVITES_FILE = 'invites.json'
+
+# Load or initialize invite tracking data
+def load_invites():
+    """Load invite tracking data from JSON file."""
+    try:
+        with open(INVITES_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_invites(invites_data):
+    """Save invite tracking data to JSON file."""
+    with open(INVITES_FILE, 'w') as f:
+        json.dump(invites_data, f, indent=2)
+
+invites_data = load_invites()
+
 # Giveaway configuration from config.json
 GIVEAWAY_CHANNEL_ID = int(config.get('giveawayChannelId', 0))
 INVITE_CHANNEL_ID = int(config.get('inviteChannelId', 0))
@@ -1448,6 +1467,264 @@ async def message_stats(ctx, member: discord.Member = None):
     await ctx.send(embed=embed)
 
 # -----------------------------
+# INVITE TRACKING COMMANDS
+# -----------------------------
+
+@bot.command(name='i', aliases=['invites'])
+async def check_invites(ctx, member: discord.Member = None):
+    """
+    Check invite statistics for a user.
+    
+    Usage: -i [@user]
+    Shows total invites and breakdown of regular, fake, left, and added invites.
+    """
+    # Default to command author if no member specified
+    if member is None:
+        member = ctx.author
+    
+    guild = ctx.guild
+    if not guild:
+        await ctx.send("This command can only be used in a server.")
+        return
+    
+    # Get invite statistics
+    invite_stats = await get_user_invites(guild, member.id)
+    
+    # Create embed
+    embed = discord.Embed(
+        title="Invite Statistics",
+        description=f"Invite stats for {member.mention}",
+        color=discord.Color.blue()
+    )
+    
+    # Main total display
+    embed.add_field(
+        name="Total Invites",
+        value=f"**{invite_stats['total']:,}** ({invite_stats['regular']:,} regular, {invite_stats['fake']:,} fake, {invite_stats['left']:,} left, {invite_stats['added']:,} added)",
+        inline=False
+    )
+    
+    # Set user's profile picture
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+    
+    # Add footer
+    embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url)
+    embed.timestamp = discord.utils.utcnow()
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='addinvites')
+@commands.has_permissions(administrator=True)
+async def add_invites(ctx, member: discord.Member, amount: int):
+    """
+    Add bonus invites to a user that count toward giveaway requirements.
+    
+    Usage: -addinvites @user <amount>
+    Example: -addinvites @john 50
+    """
+    if amount <= 0:
+        embed = discord.Embed(
+            title="Invalid Amount",
+            description="Amount must be a positive number.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    user_id_str = str(member.id)
+    
+    # Initialize user data if not exists
+    if user_id_str not in invites_data:
+        invites_data[user_id_str] = {
+            'regular': 0,
+            'fake': 0,
+            'left': 0,
+            'added': 0
+        }
+    
+    # Add invites
+    invites_data[user_id_str]['added'] = invites_data[user_id_str].get('added', 0) + amount
+    save_invites(invites_data)
+    
+    # Get updated stats
+    invite_stats = await get_user_invites(ctx.guild, member.id)
+    
+    # Create confirmation embed
+    embed = discord.Embed(
+        title="Invites Added",
+        description=f"Added **{amount:,}** bonus invites to {member.mention}",
+        color=discord.Color.green()
+    )
+    embed.add_field(
+        name="New Total",
+        value=f"**{invite_stats['total']:,}** invites",
+        inline=False
+    )
+    embed.timestamp = discord.utils.utcnow()
+    
+    await ctx.send(embed=embed)
+
+@add_invites.error
+async def add_invites_error(ctx, error):
+    """Error handler for addinvites command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need administrator permissions to use this command.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.MemberNotFound):
+        embed = discord.Embed(
+            title="Member Not Found",
+            description="Could not find that member. Make sure you're using a valid @mention.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.BadArgument):
+        embed = discord.Embed(
+            title="Invalid Usage",
+            description=f"Usage: {PREFIX}addinvites @user <amount>\n\nExample: {PREFIX}addinvites @john 50",
+            color=discord.Color.orange()
+        )
+        await ctx.send(embed=embed)
+
+@bot.command(name='resetinvites')
+@commands.has_permissions(administrator=True)
+async def reset_invites(ctx, target=None):
+    """
+    Reset invite data for a user or all users.
+    
+    Usage: -resetinvites @user  (reset specific user)
+           -resetinvites all    (reset everyone)
+    """
+    if target is None:
+        embed = discord.Embed(
+            title="Invalid Usage",
+            description=f"Usage:\n`{PREFIX}resetinvites @user` - Reset specific user\n`{PREFIX}resetinvites all` - Reset all users",
+            color=discord.Color.orange()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Check if resetting all
+    if target == 'all':
+        # Clear all invite data
+        invites_data.clear()
+        save_invites(invites_data)
+        
+        embed = discord.Embed(
+            title="All Invites Reset",
+            description="All server invite data has been reset.",
+            color=discord.Color.green()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.send(embed=embed)
+        return
+    
+    # Try to parse as member mention or ID
+    try:
+        member = await commands.MemberConverter().convert(ctx, target)
+    except commands.MemberNotFound:
+        embed = discord.Embed(
+            title="Member Not Found",
+            description=f"Could not find member `{target}`. Use a valid @mention or 'all'.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    user_id_str = str(member.id)
+    
+    # Reset user's invite data
+    if user_id_str in invites_data:
+        del invites_data[user_id_str]
+        save_invites(invites_data)
+    
+    embed = discord.Embed(
+        title="Invites Reset",
+        description=f"Invite data for {member.mention} has been reset.",
+        color=discord.Color.green()
+    )
+    embed.timestamp = discord.utils.utcnow()
+    await ctx.send(embed=embed)
+
+@reset_invites.error
+async def reset_invites_error(ctx, error):
+    """Error handler for resetinvites command."""
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="Permission Denied",
+            description="You need administrator permissions to use this command.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+
+@bot.command(name='invlb', aliases=['inviteleaderboard', 'invitelb'])
+async def invite_leaderboard(ctx):
+    """
+    Display the server's invite leaderboard.
+    
+    Usage: -invlb
+    Shows top members ranked by total invite count.
+    """
+    guild = ctx.guild
+    if not guild:
+        await ctx.send("This command can only be used in a server.")
+        return
+    
+    # Collect invite data for all users
+    leaderboard_data = []
+    
+    for member in guild.members:
+        if member.bot:
+            continue
+        
+        invite_stats = await get_user_invites(guild, member.id)
+        if invite_stats['total'] > 0:
+            leaderboard_data.append({
+                'member': member,
+                'total': invite_stats['total']
+            })
+    
+    # Sort by total invites descending
+    leaderboard_data.sort(key=lambda x: x['total'], reverse=True)
+    
+    # Take top 10
+    top_users = leaderboard_data[:10]
+    
+    if not top_users:
+        embed = discord.Embed(
+            title="Invite Leaderboard",
+            description="No invite data available yet.",
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Create embed
+    embed = discord.Embed(
+        title="Invite Leaderboard",
+        description="Top members by invite count",
+        color=discord.Color.blue()
+    )
+    
+    # Add leaderboard entries
+    leaderboard_text = ""
+    for i, entry in enumerate(top_users, 1):
+        member = entry['member']
+        total = entry['total']
+        leaderboard_text += f"**{i}.** {member.mention} - **{total:,}** invites\n"
+    
+    embed.add_field(name="Rankings", value=leaderboard_text, inline=False)
+    
+    # Add footer
+    embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url)
+    embed.timestamp = discord.utils.utcnow()
+    
+    await ctx.send(embed=embed)
+
+# -----------------------------
 # GIVEAWAY COMMANDS
 # -----------------------------
 
@@ -1521,29 +1798,61 @@ def check_message_requirement(user_id, requirement, period):
 
 async def get_user_invites(guild, user_id):
     """
-    Get user's invite count by fetching guild invites.
-    This tracks invites created by the user that have been used.
+    Get user's total invite count including regular, added, fake, and left tracking.
+    This tracks invites created by the user that have been used, plus any manually added bonuses.
     Works similarly to Invite Tracker bot (ID: 720351927581278219).
+    Returns dict with: regular, fake, left, added, total
     """
+    user_id_str = str(user_id)
+    
+    # Initialize user data if not exists
+    if user_id_str not in invites_data:
+        invites_data[user_id_str] = {
+            'regular': 0,
+            'fake': 0,
+            'left': 0,
+            'added': 0
+        }
+    
     try:
-        # Fetch all guild invites
-        invites = await guild.invites()
+        # Fetch all guild invites to get regular invites
+        guild_invites = await guild.invites()
         
         # Count invites created by this user
-        user_invite_count = 0
-        for invite in invites:
+        regular_count = 0
+        for invite in guild_invites:
             if invite.inviter and invite.inviter.id == user_id:
                 # Add the number of times this invite code has been used
-                user_invite_count += invite.uses
+                regular_count += invite.uses
         
-        return user_invite_count
+        # Update regular invite count
+        invites_data[user_id_str]['regular'] = regular_count
+        save_invites(invites_data)
+        
     except discord.Forbidden:
         # Bot doesn't have permission to view invites
         print(f"Missing permissions to view invites in guild {guild.id}")
-        return 0
+        regular_count = invites_data[user_id_str].get('regular', 0)
     except Exception as e:
         print(f"Error fetching invites for user {user_id}: {e}")
-        return 0
+        regular_count = invites_data[user_id_str].get('regular', 0)
+    
+    # Get all invite stats
+    stats = invites_data[user_id_str]
+    fake = stats.get('fake', 0)
+    left = stats.get('left', 0)
+    added = stats.get('added', 0)
+    
+    # Calculate total: regular + added - fake - left
+    total = regular_count + added - fake - left
+    
+    return {
+        'regular': regular_count,
+        'fake': fake,
+        'left': left,
+        'added': added,
+        'total': max(0, total)  # Don't allow negative totals
+    }
 
 def calculate_total_entries(participants):
     """Calculate total entries from all participants."""
@@ -1792,8 +2101,8 @@ class GiveawayView(discord.ui.View):
                     message_met = True
                     
                     if giveaway.get('inviteRequirement', 0) > 0:
-                        invites = await get_user_invites(guild, member.id)
-                        invite_met = invites >= giveaway['inviteRequirement']
+                        invite_stats = await get_user_invites(guild, member.id)
+                        invite_met = invite_stats['total'] >= giveaway['inviteRequirement']
                     
                     if giveaway.get('messageRequirement', 0) > 0:
                         message_met = check_message_requirement(member.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
@@ -1836,8 +2145,8 @@ class GiveawayView(discord.ui.View):
                 error_message = ''
                 
                 if giveaway.get('inviteRequirement', 0) > 0:
-                    invites = await get_user_invites(guild, member.id)
-                    invite_met = invites >= giveaway['inviteRequirement']
+                    invite_stats = await get_user_invites(guild, member.id)
+                    invite_met = invite_stats['total'] >= giveaway['inviteRequirement']
                 
                 if giveaway.get('messageRequirement', 0) > 0:
                     message_met = check_message_requirement(member.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
