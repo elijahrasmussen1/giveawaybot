@@ -152,7 +152,12 @@ module.exports = {
         try {
             // Question 1: Duration
             await message.channel.send('**Giveaway Setup - Question 1/5**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):');
-            const durationMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] });
+            const durationMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
+            
+            if (durationMsg.size === 0) {
+                return message.channel.send('Giveaway creation timed out. Please try again.');
+            }
+            
             const durationMs = parseDuration(durationMsg.first().content);
             
             if (!durationMs) {
@@ -164,7 +169,12 @@ module.exports = {
             
             // Question 2: Number of Winners
             await message.channel.send('**Giveaway Setup - Question 2/5**\nEnter the number of winners:');
-            const winnersMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] });
+            const winnersMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
+            
+            if (winnersMsg.size === 0) {
+                return message.channel.send('Giveaway creation timed out. Please try again.');
+            }
+            
             const winners = parseInt(winnersMsg.first().content);
             
             if (isNaN(winners) || winners < 1) {
@@ -175,12 +185,22 @@ module.exports = {
             
             // Question 3: Prize
             await message.channel.send('**Giveaway Setup - Question 3/5**\nEnter the prize:');
-            const prizeMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] });
+            const prizeMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
+            
+            if (prizeMsg.size === 0) {
+                return message.channel.send('Giveaway creation timed out. Please try again.');
+            }
+            
             giveawayData.prize = prizeMsg.first().content;
             
             // Question 4: Invite Requirement
             await message.channel.send('**Giveaway Setup - Question 4/5 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):');
-            const inviteMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] });
+            const inviteMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
+            
+            if (inviteMsg.size === 0) {
+                return message.channel.send('Giveaway creation timed out. Please try again.');
+            }
+            
             const inviteReq = parseInt(inviteMsg.first().content);
             
             if (isNaN(inviteReq) || inviteReq < 0) {
@@ -191,7 +211,12 @@ module.exports = {
             
             // Question 5: Message Requirement
             await message.channel.send('**Giveaway Setup - Question 5/5 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:');
-            const messageReqMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] });
+            const messageReqMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
+            
+            if (messageReqMsg.size === 0) {
+                return message.channel.send('Giveaway creation timed out. Please try again.');
+            }
+            
             const messageReqContent = messageReqMsg.first().content.trim();
             
             if (messageReqContent === '0') {
@@ -284,11 +309,11 @@ module.exports = {
             await message.channel.send('Giveaway created successfully!');
             
         } catch (error) {
-            if (error.message === 'time') {
+            if (error.message && error.message.includes('time')) {
                 return message.channel.send('Giveaway creation timed out. Please try again.');
             }
             console.error('Error creating giveaway:', error);
-            return message.channel.send('An error occurred while creating the giveaway.');
+            return message.channel.send(`An error occurred while creating the giveaway: ${error.message || 'Unknown error'}`);
         }
     }
 };

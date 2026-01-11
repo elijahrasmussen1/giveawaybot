@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, Partials } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -40,7 +40,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildMembers,
     ],
-    partials: ['MESSAGE', 'CHANNEL', 'REACTION']
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
 // Initialize commands collection
