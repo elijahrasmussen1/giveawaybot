@@ -1791,30 +1791,7 @@ async def invite_leaderboard(ctx):
         await ctx.send("This command can only be used in a server.")
         return
     
-    # Fetch guild invites ONCE to avoid rate limiting
-    try:
-        guild_invites = await guild.invites()
-    except discord.Forbidden:
-        embed = discord.Embed(
-            title="Permission Error",
-            description="Bot needs 'Manage Guild' permission to track invites.",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=embed)
-        return
-    
-    # Calculate invites for all users in a single pass
-    user_invites = {}
-    
-    # Count regular invites from Discord's invite system
-    for invite in guild_invites:
-        if invite.inviter:
-            inviter_id = str(invite.inviter.id)
-            if inviter_id not in user_invites:
-                user_invites[inviter_id] = 0
-            user_invites[inviter_id] += invite.uses
-    
-    # Collect leaderboard data
+    # Collect leaderboard data using stored invite data
     leaderboard_data = []
     
     for member in guild.members:
@@ -1823,11 +1800,9 @@ async def invite_leaderboard(ctx):
         
         user_id_str = str(member.id)
         
-        # Get regular invites from our calculated data
-        regular = user_invites.get(user_id_str, 0)
-        
-        # Get additional data from persistent storage
+        # Get all invite data from persistent storage (updated by automatic tracking)
         user_data = invites_data.get(user_id_str, {'regular': 0, 'fake': 0, 'left': 0, 'added': 0})
+        regular = user_data.get('regular', 0)
         fake = user_data.get('fake', 0)
         left = user_data.get('left', 0)
         added = user_data.get('added', 0)
