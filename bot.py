@@ -8,6 +8,8 @@ import discord
 from discord.ext import commands
 import json
 from datetime import datetime, timedelta
+import asyncio
+import re
 
 # -----------------------------
 # CONFIGURATION
@@ -71,6 +73,35 @@ def save_messages(messages_data):
 
 messages_data = load_messages()
 
+# Giveaway database file
+GIVEAWAYS_FILE = 'giveaways.json'
+
+# Load or initialize giveaway data
+def load_giveaways():
+    """Load giveaway data from JSON file."""
+    try:
+        with open(GIVEAWAYS_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_giveaways(giveaways_data):
+    """Save giveaway data to JSON file."""
+    with open(GIVEAWAYS_FILE, 'w') as f:
+        json.dump(giveaways_data, f, indent=2)
+
+giveaways_data = load_giveaways()
+
+# Giveaway configuration from config.json
+GIVEAWAY_CHANNEL_ID = int(config.get('giveawayChannelId', 0))
+INVITE_CHANNEL_ID = int(config.get('inviteChannelId', 0))
+GUILD_ID = int(config.get('guildId', 0))
+ROLE_IDS = config.get('roles', {})
+MEMBER_ROLE_ID = int(ROLE_IDS.get('member', 0))
+LEVEL5_ROLE_ID = int(ROLE_IDS.get('level5', 0))
+SHOP_OWNER_ROLE_ID = int(ROLE_IDS.get('shopOwner', 0))
+SERVER_BOOSTER_ROLE_ID = int(ROLE_IDS.get('serverBooster', 0))
+
 # -----------------------------
 # BOT SETUP
 # -----------------------------
@@ -78,6 +109,7 @@ messages_data = load_messages()
 intents = discord.Intents.default()
 intents.message_content = True  # Required for reading message content and commands
 intents.members = True  # Required for member information in whois command
+intents.reactions = True  # Required for giveaway reactions
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
@@ -138,6 +170,113 @@ async def on_message(message):
         except ValueError:
             # Not a valid number, ignore
             pass
+
+@bot.event
+async def on_raw_reaction_add(payload):
+    """Event handler for when a reaction is added."""
+    if payload.user_id == bot.user.id:
+        return
+    
+    # Check if this is a giveaway message
+    giveaway_id = None
+    giveaway = None
+    
+    for gid, g in giveaways_data.items():
+        if g.get('messageId') == payload.message_id and not g.get('ended', False):
+            giveaway_id = gid
+            giveaway = g
+            break
+    
+    if not giveaway or str(payload.emoji) != '🎉':
+        return
+    
+    try:
+        guild = bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
+        
+        if not member:
+            return
+        
+        entries, bypass = get_entry_count(member)
+        
+        # Check if user has valid roles
+        if entries == 0:
+            channel = guild.get_channel(payload.channel_id)
+            message = await channel.fetch_message(payload.message_id)
+            await message.remove_reaction(payload.emoji, member)
+            try:
+                await member.send('You do not have the required role to enter this giveaway!')
+            except:
+                pass
+            return
+        
+        # Check requirements (unless bypassed by Server Booster)
+        if not bypass:
+            invite_met = True
+            message_met = True
+            error_message = ''
+            
+            if giveaway.get('inviteRequirement', 0) > 0:
+                invites = await get_user_invites(guild, payload.user_id)
+                invite_met = invites >= giveaway['inviteRequirement']
+            
+            if giveaway.get('messageRequirement', 0) > 0:
+                message_met = check_message_requirement(payload.user_id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
+            
+            # Determine error message
+            if not invite_met and not message_met:
+                error_message = f"No requirements met! Please track your invites by using /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} and spam messages to meet requirement is a blacklist from giveaways!"
+            elif not invite_met:
+                error_message = f"Join failed! You must complete the invite requirement. Use /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} to see your invites."
+            elif not message_met:
+                error_message = 'Join failed! You must complete the message requirement. Spamming messages is a blacklist from the giveaway!'
+            
+            if error_message:
+                channel = guild.get_channel(payload.channel_id)
+                message = await channel.fetch_message(payload.message_id)
+                await message.remove_reaction(payload.emoji, member)
+                try:
+                    await member.send(error_message)
+                except:
+                    pass
+                return
+        
+        # User successfully entered - track their entry
+        if 'participants' not in giveaway:
+            giveaway['participants'] = {}
+        giveaway['participants'][str(payload.user_id)] = {
+            'entries': entries,
+            'bypass': bypass,
+            'timestamp': datetime.utcnow().timestamp()
+        }
+        save_giveaways(giveaways_data)
+        
+    except Exception as e:
+        print(f"Error processing giveaway entry: {e}")
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    """Event handler for when a reaction is removed."""
+    if payload.user_id == bot.user.id:
+        return
+    
+    # Check if this is a giveaway message
+    giveaway_id = None
+    giveaway = None
+    
+    for gid, g in giveaways_data.items():
+        if g.get('messageId') == payload.message_id and not g.get('ended', False):
+            giveaway_id = gid
+            giveaway = g
+            break
+    
+    if not giveaway or str(payload.emoji) != '🎉':
+        return
+    
+    # Remove user from participants
+    if 'participants' in giveaway and str(payload.user_id) in giveaway['participants']:
+        del giveaway['participants'][str(payload.user_id)]
+        save_giveaways(giveaways_data)
 
 # -----------------------------
 # COMMANDS
@@ -1411,6 +1550,505 @@ async def message_stats(ctx, member: discord.Member = None):
     embed.timestamp = discord.utils.utcnow()
     
     await ctx.send(embed=embed)
+
+# -----------------------------
+# GIVEAWAY COMMANDS
+# -----------------------------
+
+def parse_duration(duration_str):
+    """Parse duration string like '10 minutes', '5 hours', '2 days' into seconds."""
+    match = re.match(r'^(\d+)\s*(m|min|minute|minutes|h|hr|hour|hours|d|day|days)$', duration_str.lower())
+    if not match:
+        return None
+    
+    value = int(match.group(1))
+    unit = match.group(2)
+    
+    if unit.startswith('m'):
+        return value * 60  # minutes to seconds
+    elif unit.startswith('h'):
+        return value * 3600  # hours to seconds
+    elif unit.startswith('d'):
+        return value * 86400  # days to seconds
+    
+    return None
+
+def get_entry_count(member):
+    """Get the number of entries a member gets based on their roles."""
+    # Server Booster gets 4 entries and bypasses requirements
+    if member.get_role(SERVER_BOOSTER_ROLE_ID):
+        return 4, True
+    
+    # Shop Owner gets 3 entries
+    if member.get_role(SHOP_OWNER_ROLE_ID):
+        return 3, False
+    
+    # Level 5 gets 2 entries
+    if member.get_role(LEVEL5_ROLE_ID):
+        return 2, False
+    
+    # Member role gets 1 entry
+    if member.get_role(MEMBER_ROLE_ID):
+        return 1, False
+    
+    return 0, False
+
+def check_message_requirement(user_id, requirement, period):
+    """Check if user meets message requirements."""
+    user_messages = messages_data.get(str(user_id), [])
+    
+    if not user_messages:
+        return False
+    
+    now = datetime.utcnow()
+    
+    if period == 'today':
+        start_time = datetime(now.year, now.month, now.day)
+    elif period == 'weekly':
+        start_time = now - timedelta(days=now.weekday())
+        start_time = datetime(start_time.year, start_time.month, start_time.day)
+    elif period == 'monthly':
+        start_time = datetime(now.year, now.month, 1)
+    else:
+        return False
+    
+    message_count = 0
+    for timestamp_str in user_messages:
+        try:
+            msg_time = datetime.fromisoformat(timestamp_str)
+            if msg_time >= start_time:
+                message_count += 1
+        except (ValueError, AttributeError):
+            continue
+    
+    return message_count >= requirement
+
+async def get_user_invites(guild, user_id):
+    """Get user's invite count - placeholder for Invite Tracker integration."""
+    # In production, this would query the Invite Tracker bot
+    # For now, return 0 as placeholder
+    return 0
+
+async def end_giveaway(giveaway_id):
+    """End a giveaway and select winners."""
+    giveaway = giveaways_data.get(giveaway_id)
+    
+    if not giveaway or giveaway.get('ended', False):
+        return
+    
+    try:
+        guild = bot.get_guild(giveaway['guildId'])
+        if not guild:
+            return
+        
+        channel = guild.get_channel(giveaway['channelId'])
+        if not channel:
+            return
+        
+        message = await channel.fetch_message(giveaway['messageId'])
+        if not message:
+            return
+        
+        # Get reaction users
+        reaction = None
+        for r in message.reactions:
+            if str(r.emoji) == '🎉':
+                reaction = r
+                break
+        
+        if not reaction:
+            await channel.send('No one entered the giveaway!')
+            giveaway['ended'] = True
+            save_giveaways(giveaways_data)
+            return
+        
+        users = [user async for user in reaction.users() if not user.bot]
+        valid_entries = []
+        
+        # Process each user
+        for user in users:
+            try:
+                member = guild.get_member(user.id)
+                if not member:
+                    continue
+                
+                entries, bypass = get_entry_count(member)
+                
+                if entries == 0:
+                    continue
+                
+                # Check requirements (unless bypassed)
+                meets_requirements = bypass
+                
+                if not bypass:
+                    invite_met = True
+                    message_met = True
+                    
+                    if giveaway.get('inviteRequirement', 0) > 0:
+                        invites = await get_user_invites(guild, user.id)
+                        invite_met = invites >= giveaway['inviteRequirement']
+                    
+                    if giveaway.get('messageRequirement', 0) > 0:
+                        message_met = check_message_requirement(user.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
+                    
+                    meets_requirements = invite_met and message_met
+                
+                if meets_requirements:
+                    # Add entries for this user
+                    for _ in range(entries):
+                        valid_entries.append(user.id)
+            
+            except Exception as e:
+                print(f"Error processing user {user.id}: {e}")
+        
+        if not valid_entries:
+            await channel.send('No valid entries for the giveaway!')
+            giveaway['ended'] = True
+            save_giveaways(giveaways_data)
+            return
+        
+        # Pick winners
+        import random
+        winners = []
+        winner_ids = set()
+        max_winners = min(giveaway['winners'], len(set(valid_entries)))
+        
+        while len(winners) < max_winners:
+            winner_id = random.choice(valid_entries)
+            if winner_id not in winner_ids:
+                winners.append(winner_id)
+                winner_ids.add(winner_id)
+        
+        # Announce winners
+        winner_mentions = ' '.join([f'<@{wid}>' for wid in winners])
+        winner_embed = discord.Embed(
+            title='Giveaway Ended!',
+            description=f"**Prize:** {giveaway['prize']}\n\n**Winner(s):** {winner_mentions}",
+            color=discord.Color.gold()
+        )
+        winner_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
+        winner_embed.timestamp = discord.utils.utcnow()
+        
+        await channel.send(embed=winner_embed)
+        
+        # Update giveaway message
+        ended_embed = discord.Embed(
+            title=f"GIVEAWAY ENDED: {giveaway['prize']}",
+            description='This giveaway has ended!',
+            color=discord.Color.red()
+        )
+        ended_embed.add_field(name='Winner(s)', value=winner_mentions, inline=False)
+        ended_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
+        ended_embed.timestamp = discord.utils.utcnow()
+        
+        await message.edit(embed=ended_embed)
+        
+        # Mark as ended
+        giveaway['ended'] = True
+        giveaway['winners'] = winners
+        save_giveaways(giveaways_data)
+        
+    except Exception as e:
+        print(f"Error ending giveaway: {e}")
+
+@bot.command(name='gcreate')
+@commands.has_permissions(administrator=True)
+async def create_giveaway(ctx):
+    """
+    Create a new giveaway with interactive setup (Admin only).
+    
+    Usage: -gcreate
+    """
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+    
+    giveaway_data = {}
+    
+    try:
+        # Question 1: Duration
+        await ctx.send('**Giveaway Setup - Question 1/5**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):')
+        duration_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        duration_seconds = parse_duration(duration_msg.content)
+        
+        if not duration_seconds:
+            await ctx.send('Invalid duration format. Giveaway creation cancelled.')
+            return
+        
+        giveaway_data['duration'] = duration_seconds
+        giveaway_data['endsAt'] = (datetime.utcnow() + timedelta(seconds=duration_seconds)).timestamp()
+        
+        # Question 2: Number of Winners
+        await ctx.send('**Giveaway Setup - Question 2/5**\nEnter the number of winners:')
+        winners_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        
+        try:
+            winners = int(winners_msg.content)
+            if winners < 1:
+                raise ValueError
+        except ValueError:
+            await ctx.send('Invalid number of winners. Giveaway creation cancelled.')
+            return
+        
+        giveaway_data['winners'] = winners
+        
+        # Question 3: Prize
+        await ctx.send('**Giveaway Setup - Question 3/5**\nEnter the prize:')
+        prize_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        giveaway_data['prize'] = prize_msg.content
+        
+        # Question 4: Invite Requirement
+        await ctx.send('**Giveaway Setup - Question 4/5 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):')
+        invite_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        
+        try:
+            invite_req = int(invite_msg.content)
+            if invite_req < 0:
+                raise ValueError
+        except ValueError:
+            await ctx.send('Invalid invite requirement. Giveaway creation cancelled.')
+            return
+        
+        giveaway_data['inviteRequirement'] = invite_req
+        
+        # Question 5: Message Requirement
+        await ctx.send('**Giveaway Setup - Question 5/5 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:')
+        message_req_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        message_req_content = message_req_msg.content.strip()
+        
+        if message_req_content == '0':
+            giveaway_data['messageRequirement'] = 0
+            giveaway_data['messagePeriod'] = None
+        else:
+            msg_match = re.match(r'^(\d+)\s+(today|weekly|monthly)$', message_req_content, re.IGNORECASE)
+            if not msg_match:
+                await ctx.send('Invalid message requirement format. Use format like "250 weekly". Giveaway creation cancelled.')
+                return
+            giveaway_data['messageRequirement'] = int(msg_match.group(1))
+            giveaway_data['messagePeriod'] = msg_match.group(2).lower()
+        
+        # Generate giveaway ID
+        giveaway_id = f"giveaway_{int(datetime.utcnow().timestamp() * 1000)}"
+        
+        # Create giveaway embed
+        giveaway_embed = discord.Embed(
+            title=f"GIVEAWAY: {giveaway_data['prize']}",
+            description='React with 🎉 to enter!',
+            color=discord.Color.green()
+        )
+        giveaway_embed.add_field(name='Prize', value=giveaway_data['prize'], inline=False)
+        giveaway_embed.add_field(name='Winners', value=str(giveaway_data['winners']), inline=True)
+        giveaway_embed.add_field(name='Ends', value=f"<t:{int(giveaway_data['endsAt'])}:R>", inline=True)
+        
+        # Add requirements to embed
+        requirements_text = ''
+        if giveaway_data['inviteRequirement'] > 0:
+            requirements_text += f"Invites: {giveaway_data['inviteRequirement']}\n"
+        if giveaway_data['messageRequirement'] > 0:
+            requirements_text += f"Messages: {giveaway_data['messageRequirement']} ({giveaway_data['messagePeriod']})\n"
+        if requirements_text:
+            giveaway_embed.add_field(name='Giveaway Requirements', value=requirements_text, inline=False)
+        
+        giveaway_embed.add_field(
+            name='Entry Bonuses',
+            value='Member: 1 entry\nLevel 5: 2 entries\nShop Owner: 3 entries\nServer Booster: 4 entries (bypass requirements)',
+            inline=False
+        )
+        giveaway_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
+        giveaway_embed.timestamp = discord.utils.utcnow()
+        
+        # Send giveaway message
+        giveaway_msg = await ctx.send(embed=giveaway_embed)
+        await giveaway_msg.add_reaction('🎉')
+        
+        # Save giveaway data
+        giveaways_data[giveaway_id] = {
+            **giveaway_data,
+            'messageId': giveaway_msg.id,
+            'channelId': ctx.channel.id,
+            'guildId': ctx.guild.id,
+            'createdBy': ctx.author.id,
+            'participants': {},
+            'ended': False
+        }
+        save_giveaways(giveaways_data)
+        
+        # Send confirmation to giveaway channel
+        try:
+            giveaway_channel = bot.get_channel(GIVEAWAY_CHANNEL_ID)
+            if giveaway_channel:
+                confirm_embed = discord.Embed(
+                    title='New Giveaway Created',
+                    description=f"A new giveaway has been created in <#{ctx.channel.id}>",
+                    color=discord.Color.blue()
+                )
+                confirm_embed.add_field(name='Giveaway ID', value=giveaway_id, inline=False)
+                confirm_embed.add_field(name='Prize', value=giveaway_data['prize'], inline=False)
+                confirm_embed.add_field(name='Duration', value=f"Ends <t:{int(giveaway_data['endsAt'])}:R>", inline=False)
+                confirm_embed.add_field(name='Created By', value=f"<@{ctx.author.id}>", inline=False)
+                confirm_embed.timestamp = discord.utils.utcnow()
+                
+                await giveaway_channel.send(embed=confirm_embed)
+        except Exception as e:
+            print(f"Error sending to giveaway channel: {e}")
+        
+        # Setup timer to end giveaway
+        bot.loop.create_task(schedule_giveaway_end(giveaway_id, giveaway_data['duration']))
+        
+        await ctx.send('Giveaway created successfully!')
+        
+    except asyncio.TimeoutError:
+        await ctx.send('Giveaway creation timed out. Please try again.')
+    except Exception as e:
+        print(f"Error creating giveaway: {e}")
+        await ctx.send(f'An error occurred while creating the giveaway: {str(e)}')
+
+async def schedule_giveaway_end(giveaway_id, delay):
+    """Schedule giveaway to end after delay seconds."""
+    await asyncio.sleep(delay)
+    await end_giveaway(giveaway_id)
+
+@bot.command(name='greroll')
+@commands.has_permissions(administrator=True)
+async def reroll_giveaway(ctx, giveaway_id: str = None):
+    """
+    Reroll a giveaway to pick new winner(s) (Admin only).
+    
+    Usage: -greroll <giveaway_id>
+    """
+    if not giveaway_id:
+        embed = discord.Embed(
+            title='Invalid Usage',
+            description='Usage: -greroll <giveaway_id>\n\nYou can find the giveaway ID in the footer of the giveaway message.',
+            color=discord.Color.orange()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    giveaway = giveaways_data.get(giveaway_id)
+    
+    if not giveaway:
+        embed = discord.Embed(
+            title='Giveaway Not Found',
+            description=f"No giveaway found with ID: {giveaway_id}",
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    if not giveaway.get('ended', False):
+        embed = discord.Embed(
+            title='Giveaway Not Ended',
+            description='You can only reroll giveaways that have already ended!',
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
+        return
+    
+    try:
+        guild = bot.get_guild(giveaway['guildId'])
+        channel = guild.get_channel(giveaway['channelId'])
+        message = await channel.fetch_message(giveaway['messageId'])
+        
+        # Get reaction users
+        reaction = None
+        for r in message.reactions:
+            if str(r.emoji) == '🎉':
+                reaction = r
+                break
+        
+        if not reaction:
+            await ctx.reply('No one entered the giveaway!')
+            return
+        
+        users = [user async for user in reaction.users() if not user.bot]
+        previous_winners = set(giveaway.get('winners', []))
+        valid_entries = []
+        
+        # Process each user (excluding previous winners)
+        for user in users:
+            if user.id in previous_winners:
+                continue
+            
+            try:
+                member = guild.get_member(user.id)
+                if not member:
+                    continue
+                
+                entries, bypass = get_entry_count(member)
+                
+                if entries == 0:
+                    continue
+                
+                # Check requirements (unless bypassed)
+                meets_requirements = bypass
+                
+                if not bypass:
+                    invite_met = True
+                    message_met = True
+                    
+                    if giveaway.get('inviteRequirement', 0) > 0:
+                        invites = await get_user_invites(guild, user.id)
+                        invite_met = invites >= giveaway['inviteRequirement']
+                    
+                    if giveaway.get('messageRequirement', 0) > 0:
+                        message_met = check_message_requirement(user.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
+                    
+                    meets_requirements = invite_met and message_met
+                
+                if meets_requirements:
+                    # Add entries for this user
+                    for _ in range(entries):
+                        valid_entries.append(user.id)
+            
+            except Exception as e:
+                print(f"Error processing user {user.id}: {e}")
+        
+        if not valid_entries:
+            await ctx.reply('No valid entries remaining for reroll!')
+            return
+        
+        # Pick new winners
+        import random
+        new_winners = []
+        winner_ids = set()
+        max_winners = min(giveaway['winners'], len(set(valid_entries)))
+        
+        while len(new_winners) < max_winners:
+            winner_id = random.choice(valid_entries)
+            if winner_id not in winner_ids:
+                new_winners.append(winner_id)
+                winner_ids.add(winner_id)
+        
+        # Announce new winners
+        winner_mentions = ' '.join([f'<@{wid}>' for wid in new_winners])
+        reroll_embed = discord.Embed(
+            title='Giveaway Rerolled!',
+            description=f"**Prize:** {giveaway['prize']}\n\n**New Winner(s):** {winner_mentions}",
+            color=discord.Color.gold()
+        )
+        reroll_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
+        reroll_embed.timestamp = discord.utils.utcnow()
+        
+        await channel.send(embed=reroll_embed)
+        
+        # Update stored winners
+        giveaway['winners'] = new_winners
+        save_giveaways(giveaways_data)
+        
+        await ctx.reply('Giveaway rerolled successfully!')
+        
+    except Exception as e:
+        print(f"Error rerolling giveaway: {e}")
+        embed = discord.Embed(
+            title='Error',
+            description='An error occurred while rerolling the giveaway.',
+            color=discord.Color.red()
+        )
+        embed.timestamp = discord.utils.utcnow()
+        await ctx.reply(embed=embed)
 
 # -----------------------------
 # RUN BOT
