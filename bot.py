@@ -96,6 +96,8 @@ giveaways_data = load_giveaways()
 GIVEAWAY_CHANNEL_ID = int(config.get('giveawayChannelId', 0))
 INVITE_CHANNEL_ID = int(config.get('inviteChannelId', 0))
 GUILD_ID = int(config.get('guildId', 0))
+TICKET_CATEGORY_ID = int(config.get('ticketCategoryId', 0))
+OWNER_ROLE_ID = int(config.get('ownerRoleId', 0))
 ROLE_IDS = config.get('roles', {})
 MEMBER_ROLE_ID = int(ROLE_IDS.get('member', 0))
 LEVEL5_ROLE_ID = int(ROLE_IDS.get('level5', 0))
@@ -1613,6 +1615,48 @@ async def end_giveaway(giveaway_id):
         giveaway['winners'] = winners
         save_giveaways(giveaways_data)
         
+        # Create tickets for each winner
+        try:
+            ticket_category = guild.get_channel(TICKET_CATEGORY_ID)
+            owner_role = guild.get_role(OWNER_ROLE_ID)
+            
+            if ticket_category and owner_role:
+                for winner_id in winners:
+                    try:
+                        winner_member = guild.get_member(winner_id)
+                        if not winner_member:
+                            continue
+                        
+                        # Create ticket channel
+                        overwrites = {
+                            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                            winner_member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                            owner_role: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                        }
+                        
+                        ticket_channel = await guild.create_text_channel(
+                            name=f'gw-{winner_member.name}',
+                            category=ticket_category,
+                            overwrites=overwrites
+                        )
+                        
+                        # Send congratulations message with pings
+                        congrats_embed = discord.Embed(
+                            title='Congratulations!',
+                            description=f'Congratulations {winner_member.mention} for winning our giveaway! An owner will be with you very soon.',
+                            color=discord.Color.gold()
+                        )
+                        congrats_embed.add_field(name='Prize', value=giveaway['prize'], inline=False)
+                        congrats_embed.timestamp = discord.utils.utcnow()
+                        
+                        await ticket_channel.send(f'{winner_member.mention} {owner_role.mention}', embed=congrats_embed)
+                        
+                    except Exception as e:
+                        print(f"Error creating ticket for winner {winner_id}: {e}")
+        except Exception as e:
+            print(f"Error creating tickets: {e}")
+        
     except Exception as e:
         print(f"Error ending giveaway: {e}")
 
@@ -1635,6 +1679,54 @@ class GiveawayView(discord.ui.View):
             member = interaction.user
             guild = interaction.guild
             
+            # Check if already entered first
+            if 'participants' not in giveaway:
+                giveaway['participants'] = {}
+            
+            if str(member.id) in giveaway['participants']:
+                # User already entered - re-verify their requirements to give updated feedback
+                entries, bypass = get_entry_count(member)
+                
+                if entries == 0:
+                    # Remove them if they no longer have the role
+                    del giveaway['participants'][str(member.id)]
+                    save_giveaways(giveaways_data)
+                    await interaction.response.send_message('You no longer have the required role for this giveaway!', ephemeral=True)
+                    return
+                
+                # Check requirements again (unless bypassed)
+                if not bypass:
+                    invite_met = True
+                    message_met = True
+                    
+                    if giveaway.get('inviteRequirement', 0) > 0:
+                        invites = await get_user_invites(guild, member.id)
+                        invite_met = invites >= giveaway['inviteRequirement']
+                    
+                    if giveaway.get('messageRequirement', 0) > 0:
+                        message_met = check_message_requirement(member.id, giveaway['messageRequirement'], giveaway.get('messagePeriod'))
+                    
+                    if not (invite_met and message_met):
+                        # Remove them if they no longer meet requirements
+                        del giveaway['participants'][str(member.id)]
+                        save_giveaways(giveaways_data)
+                        
+                        # Determine error message
+                        if not invite_met and not message_met:
+                            error_message = f"No requirements met! Please track your invites by using /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} and spam messages to meet requirement is a blacklist from giveaways!"
+                        elif not invite_met:
+                            error_message = f"Join failed! You must complete the invite requirement. Use /invites in https://discord.com/channels/{GUILD_ID}/{INVITE_CHANNEL_ID} to see your invites."
+                        else:
+                            error_message = 'Join failed! You must complete the message requirement. Spamming messages is a blacklist from the giveaway!'
+                        
+                        await interaction.response.send_message(error_message, ephemeral=True)
+                        return
+                
+                # Still meets requirements
+                await interaction.response.send_message(f'You have already entered this giveaway with {entries} {"entry" if entries == 1 else "entries"}!', ephemeral=True)
+                return
+            
+            # New entry - verify everything
             entries, bypass = get_entry_count(member)
             
             # Check if user has valid roles
@@ -1668,14 +1760,6 @@ class GiveawayView(discord.ui.View):
                     return
             
             # User successfully entered - track their entry
-            if 'participants' not in giveaway:
-                giveaway['participants'] = {}
-            
-            # Check if already entered
-            if str(member.id) in giveaway['participants']:
-                await interaction.response.send_message(f'You have already entered this giveaway with {entries} {"entry" if entries == 1 else "entries"}!', ephemeral=True)
-                return
-            
             giveaway['participants'][str(member.id)] = {
                 'entries': entries,
                 'bypass': bypass,
@@ -1701,56 +1785,70 @@ async def create_giveaway(ctx):
         return m.author == ctx.author and m.channel == ctx.channel
     
     giveaway_data = {}
+    messages_to_delete = [ctx.message]  # Track messages to delete later
     
     try:
         # Question 1: Duration
-        await ctx.send('**Giveaway Setup - Question 1/6**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):')
+        q1 = await ctx.send('**Giveaway Setup - Question 1/6**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):')
+        messages_to_delete.append(q1)
         duration_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        messages_to_delete.append(duration_msg)
         duration_seconds = parse_duration(duration_msg.content)
         
         if not duration_seconds:
-            await ctx.send('Invalid duration format. Giveaway creation cancelled.')
+            error_msg = await ctx.send('Invalid duration format. Giveaway creation cancelled.')
+            messages_to_delete.append(error_msg)
             return
         
         giveaway_data['duration'] = duration_seconds
         giveaway_data['endsAt'] = (datetime.utcnow() + timedelta(seconds=duration_seconds)).timestamp()
         
         # Question 2: Number of Winners
-        await ctx.send('**Giveaway Setup - Question 2/6**\nEnter the number of winners:')
+        q2 = await ctx.send('**Giveaway Setup - Question 2/6**\nEnter the number of winners:')
+        messages_to_delete.append(q2)
         winners_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        messages_to_delete.append(winners_msg)
         
         try:
             winners = int(winners_msg.content)
             if winners < 1:
                 raise ValueError
         except ValueError:
-            await ctx.send('Invalid number of winners. Giveaway creation cancelled.')
+            error_msg = await ctx.send('Invalid number of winners. Giveaway creation cancelled.')
+            messages_to_delete.append(error_msg)
             return
         
         giveaway_data['winners'] = winners
         
         # Question 3: Prize
-        await ctx.send('**Giveaway Setup - Question 3/6**\nEnter the prize:')
+        q3 = await ctx.send('**Giveaway Setup - Question 3/6**\nEnter the prize:')
+        messages_to_delete.append(q3)
         prize_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        messages_to_delete.append(prize_msg)
         giveaway_data['prize'] = prize_msg.content
         
         # Question 4: Invite Requirement
-        await ctx.send('**Giveaway Setup - Question 4/6 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):')
+        q4 = await ctx.send('**Giveaway Setup - Question 4/6 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):')
+        messages_to_delete.append(q4)
         invite_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        messages_to_delete.append(invite_msg)
         
         try:
             invite_req = int(invite_msg.content)
             if invite_req < 0:
                 raise ValueError
         except ValueError:
-            await ctx.send('Invalid invite requirement. Giveaway creation cancelled.')
+            error_msg = await ctx.send('Invalid invite requirement. Giveaway creation cancelled.')
+            messages_to_delete.append(error_msg)
             return
         
         giveaway_data['inviteRequirement'] = invite_req
         
         # Question 5: Message Requirement
-        await ctx.send('**Giveaway Setup - Question 5/6 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:')
+        q5 = await ctx.send('**Giveaway Setup - Question 5/6 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:')
+        messages_to_delete.append(q5)
         message_req_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        messages_to_delete.append(message_req_msg)
         message_req_content = message_req_msg.content.strip()
         
         if message_req_content == '0':
@@ -1759,14 +1857,17 @@ async def create_giveaway(ctx):
         else:
             msg_match = re.match(r'^(\d+)\s+(today|weekly|monthly)$', message_req_content, re.IGNORECASE)
             if not msg_match:
-                await ctx.send('Invalid message requirement format. Use format like "250 weekly". Giveaway creation cancelled.')
+                error_msg = await ctx.send('Invalid message requirement format. Use format like "250 weekly". Giveaway creation cancelled.')
+                messages_to_delete.append(error_msg)
                 return
             giveaway_data['messageRequirement'] = int(msg_match.group(1))
             giveaway_data['messagePeriod'] = msg_match.group(2).lower()
         
         # Question 6: Optional Picture
-        await ctx.send('**Giveaway Setup - Question 6/6 (Optional Picture)**\nSend an image URL or type "no" to skip:')
+        q6 = await ctx.send('**Giveaway Setup - Question 6/6 (Optional Picture)**\nSend an image URL or type "no" to skip:')
+        messages_to_delete.append(q6)
         picture_msg = await bot.wait_for('message', check=check, timeout=60.0)
+        messages_to_delete.append(picture_msg)
         picture_content = picture_msg.content.strip().lower()
         
         if picture_content != 'no':
@@ -1854,13 +1955,23 @@ async def create_giveaway(ctx):
         # Setup timer to end giveaway
         bot.loop.create_task(schedule_giveaway_end(giveaway_id, giveaway_data['duration']))
         
-        await ctx.send('Giveaway created successfully!')
+        success_msg = await ctx.send('Giveaway created successfully!')
+        messages_to_delete.append(success_msg)
+        
+        # Purge all setup messages after 2 seconds
+        await asyncio.sleep(2)
+        try:
+            await ctx.channel.delete_messages(messages_to_delete)
+        except Exception as e:
+            print(f"Error deleting messages: {e}")
         
     except asyncio.TimeoutError:
-        await ctx.send('Giveaway creation timed out. Please try again.')
+        timeout_msg = await ctx.send('Giveaway creation timed out. Please try again.')
+        messages_to_delete.append(timeout_msg)
     except Exception as e:
         print(f"Error creating giveaway: {e}")
-        await ctx.send(f'An error occurred while creating the giveaway: {str(e)}')
+        error_msg = await ctx.send(f'An error occurred while creating the giveaway: {str(e)}')
+        messages_to_delete.append(error_msg)
 
 async def schedule_giveaway_end(giveaway_id, delay):
     """Schedule giveaway to end after delay seconds."""
