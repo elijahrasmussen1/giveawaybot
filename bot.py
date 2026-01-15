@@ -2026,6 +2026,9 @@ async def update_giveaway_embed(giveaway_id):
         # Add image if provided
         if giveaway.get('imageUrl'):
             giveaway_embed.set_image(url=giveaway['imageUrl'])
+            print(f"DEBUG: Update embed - Set image: {giveaway['imageUrl']}")
+        else:
+            print("DEBUG: Update embed - No imageUrl in giveaway data")
         
         # Add requirements to embed
         requirements_text = ''
@@ -2135,6 +2138,9 @@ async def end_giveaway(giveaway_id):
         # Add image if provided
         if giveaway.get('imageUrl'):
             ended_embed.set_image(url=giveaway['imageUrl'])
+            print(f"DEBUG: Ended embed - Set image: {giveaway['imageUrl']}")
+        else:
+            print("DEBUG: Ended embed - No imageUrl in giveaway data")
         
         ended_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
         ended_embed.timestamp = discord.utils.utcnow()
@@ -2405,7 +2411,7 @@ async def create_giveaway(ctx):
             giveaway_data['messagePeriod'] = msg_match.group(2).lower()
         
         # Question 6: Optional Picture
-        q6 = await ctx.send('**Giveaway Setup - Question 6/6 (Optional Picture)**\nSend an image URL or type "no" to skip:')
+        q6 = await ctx.send('**Giveaway Setup - Question 6/6 (Optional Picture)**\nSend an image URL, attach an image file, or type "no" to skip:')
         messages_to_delete.append(q6)
         picture_msg = await bot.wait_for('message', check=check, timeout=60.0)
         messages_to_delete.append(picture_msg)
@@ -2415,12 +2421,16 @@ async def create_giveaway(ctx):
             # Check if message has attachments or contains a URL
             if picture_msg.attachments:
                 giveaway_data['imageUrl'] = picture_msg.attachments[0].url
+                print(f"DEBUG: Image attachment URL: {giveaway_data['imageUrl']}")
             elif picture_content.startswith('http://') or picture_content.startswith('https://'):
                 giveaway_data['imageUrl'] = picture_msg.content.strip()
+                print(f"DEBUG: Image URL from text: {giveaway_data['imageUrl']}")
             else:
                 giveaway_data['imageUrl'] = None
+                print(f"DEBUG: No valid image URL or attachment, content was: {picture_content}")
         else:
             giveaway_data['imageUrl'] = None
+            print("DEBUG: User skipped image")
         
         # Generate giveaway ID
         giveaway_id = f"giveaway_{int(datetime.utcnow().timestamp() * 1000)}"
@@ -2439,6 +2449,9 @@ async def create_giveaway(ctx):
         # Add image if provided
         if giveaway_data.get('imageUrl'):
             giveaway_embed.set_image(url=giveaway_data['imageUrl'])
+            print(f"DEBUG: Set image on embed: {giveaway_data['imageUrl']}")
+        else:
+            print("DEBUG: No imageUrl in giveaway_data, skipping image")
         
         # Add requirements to embed
         requirements_text = ''
