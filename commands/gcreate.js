@@ -246,7 +246,7 @@ module.exports = {
                 if (pictureMsg.first().attachments.size > 0) {
                     giveawayData.imageUrl = pictureMsg.first().attachments.first().url;
                 } else if (pictureContent.startsWith('http://') || pictureContent.startsWith('https://')) {
-                    giveawayData.imageUrl = pictureContent;
+                    giveawayData.imageUrl = pictureMsg.first().content.trim();
                 } else {
                     giveawayData.imageUrl = null;
                 }
