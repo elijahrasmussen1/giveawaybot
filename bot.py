@@ -2131,6 +2131,11 @@ async def end_giveaway(giveaway_id):
             color=discord.Color.red()
         )
         ended_embed.add_field(name='Winner(s)', value=winner_mentions, inline=False)
+        
+        # Add image if provided
+        if giveaway.get('imageUrl'):
+            ended_embed.set_image(url=giveaway['imageUrl'])
+        
         ended_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
         ended_embed.timestamp = discord.utils.utcnow()
         
