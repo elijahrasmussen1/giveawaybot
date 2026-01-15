@@ -151,7 +151,7 @@ module.exports = {
         
         try {
             // Question 1: Duration
-            await message.channel.send('**Giveaway Setup - Question 1/5**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):');
+            await message.channel.send('**Giveaway Setup - Question 1/6**\nEnter the duration (e.g., "10 minutes", "5 hours", "2 days"):');
             const durationMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
             
             if (durationMsg.size === 0) {
@@ -168,7 +168,7 @@ module.exports = {
             giveawayData.endsAt = Date.now() + durationMs;
             
             // Question 2: Number of Winners
-            await message.channel.send('**Giveaway Setup - Question 2/5**\nEnter the number of winners:');
+            await message.channel.send('**Giveaway Setup - Question 2/6**\nEnter the number of winners:');
             const winnersMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
             
             if (winnersMsg.size === 0) {
@@ -184,7 +184,7 @@ module.exports = {
             giveawayData.winners = winners;
             
             // Question 3: Prize
-            await message.channel.send('**Giveaway Setup - Question 3/5**\nEnter the prize:');
+            await message.channel.send('**Giveaway Setup - Question 3/6**\nEnter the prize:');
             const prizeMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
             
             if (prizeMsg.size === 0) {
@@ -194,7 +194,7 @@ module.exports = {
             giveawayData.prize = prizeMsg.first().content;
             
             // Question 4: Invite Requirement
-            await message.channel.send('**Giveaway Setup - Question 4/5 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):');
+            await message.channel.send('**Giveaway Setup - Question 4/6 (Requirements)**\nEnter the invite requirement (or 0 for no requirement):');
             const inviteMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
             
             if (inviteMsg.size === 0) {
@@ -210,7 +210,7 @@ module.exports = {
             giveawayData.inviteRequirement = inviteReq;
             
             // Question 5: Message Requirement
-            await message.channel.send('**Giveaway Setup - Question 5/5 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:');
+            await message.channel.send('**Giveaway Setup - Question 5/6 (Requirements)**\nEnter the message requirement followed by period (e.g., "250 weekly", "100 today", "500 monthly") or "0" for no requirement:');
             const messageReqMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
             
             if (messageReqMsg.size === 0) {
@@ -229,6 +229,29 @@ module.exports = {
                 }
                 giveawayData.messageRequirement = parseInt(msgMatch[1]);
                 giveawayData.messagePeriod = msgMatch[2].toLowerCase();
+            }
+            
+            // Question 6: Optional Picture
+            await message.channel.send('**Giveaway Setup - Question 6/6 (Optional Picture)**\nSend an image URL or attach an image, or type "no" to skip:');
+            const pictureMsg = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
+            
+            if (pictureMsg.size === 0) {
+                return message.channel.send('Giveaway creation timed out. Please try again.');
+            }
+            
+            const pictureContent = pictureMsg.first().content.trim().toLowerCase();
+            
+            if (pictureContent !== 'no') {
+                // Check if message has attachments or contains a URL
+                if (pictureMsg.first().attachments.size > 0) {
+                    giveawayData.imageUrl = pictureMsg.first().attachments.first().url;
+                } else if (pictureContent.startsWith('http://') || pictureContent.startsWith('https://')) {
+                    giveawayData.imageUrl = pictureContent;
+                } else {
+                    giveawayData.imageUrl = null;
+                }
+            } else {
+                giveawayData.imageUrl = null;
             }
             
             // Generate giveaway ID
@@ -255,6 +278,11 @@ module.exports = {
             }
             if (requirementsText) {
                 giveawayEmbed.addFields({ name: 'Giveaway Requirements', value: requirementsText, inline: false });
+            }
+            
+            // Add image if provided
+            if (giveawayData.imageUrl) {
+                giveawayEmbed.setImage(giveawayData.imageUrl);
             }
             
             giveawayEmbed.addFields(
@@ -426,6 +454,11 @@ async function endGiveaway(client, giveawayId) {
             )
             .setFooter({ text: `Giveaway ID: ${giveawayId}` })
             .setTimestamp();
+        
+        // Add image if provided
+        if (giveaway.imageUrl) {
+            endedEmbed.setImage(giveaway.imageUrl);
+        }
         
         await giveawayMsg.edit({ embeds: [endedEmbed] });
         
