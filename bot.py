@@ -2411,7 +2411,7 @@ async def create_giveaway(ctx):
             if picture_msg.attachments:
                 giveaway_data['imageUrl'] = picture_msg.attachments[0].url
             elif picture_content.startswith('http://') or picture_content.startswith('https://'):
-                giveaway_data['imageUrl'] = picture_content
+                giveaway_data['imageUrl'] = picture_msg.content.strip()
             else:
                 giveaway_data['imageUrl'] = None
         else:
