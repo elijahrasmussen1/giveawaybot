@@ -113,8 +113,8 @@ function getEntryCount(member) {
         return { entries: 4, bypass: true };
     }
     
-    // Shop Owner gets 3 entries
-    if (member.roles.cache.has(roles.shopOwner)) {
+    // Depositor gets 3 entries
+    if (member.roles.cache.has(roles.depositor)) {
         return { entries: 3, bypass: false };
     }
     
@@ -258,7 +258,7 @@ module.exports = {
             }
             
             giveawayEmbed.addFields(
-                { name: 'Entry Bonuses', value: 'Member: 1 entry\nLevel 5: 2 entries\nShop Owner: 3 entries\nServer Booster: 4 entries (bypass requirements)', inline: false }
+                { name: 'Entry Bonuses', value: 'Member: 1 entry\nLevel 5: 2 entries\nDepositor: 3 entries\nServer Booster: 4 entries (bypass requirements)', inline: false }
             );
             
             giveawayEmbed.setFooter({ text: `Giveaway ID: ${giveawayId}` })

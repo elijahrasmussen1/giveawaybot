@@ -120,7 +120,7 @@ OWNER_ROLE_ID = int(config.get('ownerRoleId', 0))
 ROLE_IDS = config.get('roles', {})
 MEMBER_ROLE_ID = int(ROLE_IDS.get('member', 0))
 LEVEL5_ROLE_ID = int(ROLE_IDS.get('level5', 0))
-SHOP_OWNER_ROLE_ID = int(ROLE_IDS.get('shopOwner', 0))
+DEPOSITOR_ROLE_ID = int(ROLE_IDS.get('depositor', 0))
 SERVER_BOOSTER_ROLE_ID = int(ROLE_IDS.get('serverBooster', 0))
 
 # -----------------------------
@@ -1881,8 +1881,8 @@ def get_entry_count(member):
     if member.get_role(SERVER_BOOSTER_ROLE_ID):
         return 4, True
     
-    # Shop Owner gets 3 entries
-    if member.get_role(SHOP_OWNER_ROLE_ID):
+    # Depositor gets 3 entries
+    if member.get_role(DEPOSITOR_ROLE_ID):
         return 3, False
     
     # Level 5 gets 2 entries
@@ -2038,7 +2038,7 @@ async def update_giveaway_embed(giveaway_id):
         
         giveaway_embed.add_field(
             name='Entry Bonuses',
-            value=f'<@&{MEMBER_ROLE_ID}>: 1 entry\n<@&{LEVEL5_ROLE_ID}>: 2 entries\n<@&{SHOP_OWNER_ROLE_ID}>: 3 entries\n<@&{SERVER_BOOSTER_ROLE_ID}>: 4 entries (bypass requirements)',
+            value=f'<@&{MEMBER_ROLE_ID}>: 1 entry\n<@&{LEVEL5_ROLE_ID}>: 2 entries\n<@&{DEPOSITOR_ROLE_ID}>: 3 entries\n<@&{SERVER_BOOSTER_ROLE_ID}>: 4 entries (bypass requirements)',
             inline=False
         )
         giveaway_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
@@ -2446,7 +2446,7 @@ async def create_giveaway(ctx):
         
         giveaway_embed.add_field(
             name='Entry Bonuses',
-            value=f'<@&{MEMBER_ROLE_ID}>: 1 entry\n<@&{LEVEL5_ROLE_ID}>: 2 entries\n<@&{SHOP_OWNER_ROLE_ID}>: 3 entries\n<@&{SERVER_BOOSTER_ROLE_ID}>: 4 entries (bypass requirements)',
+            value=f'<@&{MEMBER_ROLE_ID}>: 1 entry\n<@&{LEVEL5_ROLE_ID}>: 2 entries\n<@&{DEPOSITOR_ROLE_ID}>: 3 entries\n<@&{SERVER_BOOSTER_ROLE_ID}>: 4 entries (bypass requirements)',
             inline=False
         )
         giveaway_embed.set_footer(text=f"Giveaway ID: {giveaway_id}")

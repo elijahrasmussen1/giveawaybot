@@ -80,7 +80,7 @@ Both implementations provide identical features. Choose based on your preference
 - **Role-Based Entry System**:
   - Member role: 1 entry
   - Level 5 role: 2 entries
-  - Shop Owner role: 3 entries
+  - Depositor role: 3 entries
   - Server Booster role: 4 entries + bypasses all requirements
 - **Invite Integration**: Uses same invite tracking as `-i` command for accurate requirement verification
 - **Automatic Validation**: Users must meet invite and message requirements to enter
@@ -171,7 +171,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Node.js setup and hosting option
 **Entry System:**
 - Member role: 1 entry
 - Level 5 role: 2 entries  
-- Shop Owner role: 3 entries
+- Depositor role: 3 entries
 - Server Booster role: 4 entries + bypasses all requirements
 
 ## How to Play Guess the Number
@@ -195,7 +195,7 @@ Edit `config.json` to customize:
 - `roles`: Role IDs for giveaway entry system
   - `member`: Member role ID (1 entry)
   - `level5`: Level 5 role ID (2 entries)
-  - `shopOwner`: Shop Owner role ID (3 entries)
+  - `depositor`: Depositor role ID (3 entries)
   - `serverBooster`: Server Booster role ID (4 entries + bypass)
 - `inviteTrackerBotId`: Invite Tracker bot ID for integration
 
